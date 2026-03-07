@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useRef } from 'react'
 import type { AppState } from '@/App'
+import { hasFeature } from '@/App'
 
 const JOURNAL_NUDGES = [
   "The people who know themselves best are the ones who write things down. 60 seconds is all it takes.",
@@ -90,23 +91,33 @@ async function scheduleNudge(id: string, text: string, triggerAt: number) {
 
 export function useDailyNudges(state: AppState) {
   const enabled = !!state.profile.notificationsEnabled
-  const isFree = state.subscription?.tier === 'free'
+  const tier = state.subscription?.tier || 'free'
+  const canUseNudges = hasFeature(tier, 'daily_nudges')
   const scheduledRef = useRef(false)
 
   const doSchedule = useCallback(async () => {
-    if (!enabled || isFree) return  // No nudges for free tier
+    if (!enabled || !canUseNudges) return  // Only for tiers with daily_nudges feature
     if (!('Notification' in window) || Notification.permission !== 'granted') return
 
     const today = new Date().toDateString()
-    const lastScheduled = localStorage.getItem('lp-nudge-scheduled')
-    if (lastScheduled === today && scheduledRef.current) return
+    const lastScheduledKey = 'lp-nudge-scheduled'
+    const lastScheduledTime = localStorage.getItem(lastScheduledKey + '-time')
+    const lastScheduledDate = localStorage.getItem(lastScheduledKey)
+    
+    // Re-schedule if: different day, OR it's been more than 2 hours since last schedule
+    // This ensures recovery when service worker is terminated
+    const timeSinceLastSchedule = lastScheduledTime ? Date.now() - parseInt(lastScheduledTime, 10) : Infinity
+    const shouldReschedule = lastScheduledDate !== today || timeSinceLastSchedule > 2 * 60 * 60 * 1000
+    
+    if (!shouldReschedule && scheduledRef.current) return
 
     const now = new Date()
 
     // 1. Feature discovery nudge — one random nudge at a pleasant time
     const featureNudge = ALL_FEATURE_NUDGES[Math.floor(Math.random() * ALL_FEATURE_NUDGES.length)]
     const featureHours = [10, 14, 19]
-    const featureHour = featureHours.find(h => h > now.getHours())
+    // Use >= to include the current hour if we're at the start of that hour
+    const featureHour = featureHours.find(h => h > now.getHours() || (h === now.getHours() && now.getMinutes() < 30))
     if (featureHour) {
       const featureTime = new Date(now)
       featureTime.setHours(featureHour, Math.floor(Math.random() * 20), 0, 0)
@@ -154,9 +165,10 @@ export function useDailyNudges(state: AppState) {
     }
 
     // Only mark as scheduled AFTER all scheduling succeeded
-    localStorage.setItem('lp-nudge-scheduled', today)
+    localStorage.setItem(lastScheduledKey, today)
+    localStorage.setItem(lastScheduledKey + '-time', Date.now().toString())
     scheduledRef.current = true
-  }, [enabled, isFree, state.items, state.journal, state.habits])
+  }, [enabled, canUseNudges, state.items, state.journal, state.habits])
 
   useEffect(() => {
     // Wait for SW to be ready before scheduling

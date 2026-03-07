@@ -7,7 +7,13 @@ self.addEventListener('install', (event) => {
 })
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(clients.claim())
+  event.waitUntil(
+    Promise.all([
+      clients.claim(),
+      // Restore any persisted reminders when SW activates
+      restoreReminders()
+    ])
+  )
 })
 
 // Handle messages from the app
@@ -71,38 +77,133 @@ self.addEventListener('notificationclick', (event) => {
   }
 })
 
-// Simple in-memory reminder store (service workers can be killed, so we also use setTimeout)
-const reminders = new Map()
+// IndexedDB for persistent reminder storage (survives SW termination)
+const DB_NAME = 'lifepilot-sw'
+const DB_VERSION = 1
+const STORE_NAME = 'reminders'
 
-function scheduleReminder(id, text, triggerAt) {
-  // Cancel existing reminder for this id
-  if (reminders.has(id)) clearTimeout(reminders.get(id))
-  
-  const delay = Math.max(0, triggerAt - Date.now())
-  const timer = setTimeout(() => {
-    self.registration.showNotification('⏰ LifePilot Reminder', {
-      body: text,
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-      tag: 'reminder-' + id,
-      requireInteraction: true,
-      data: { itemId: id },
-      actions: [
-        { action: 'open', title: 'Open' },
-        { action: 'done', title: 'Done ✓' },
-        { action: 'snooze', title: '1hr later' },
-      ],
-    })
-    reminders.delete(id)
-  }, delay)
-  
-  reminders.set(id, timer)
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION)
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => resolve(request.result)
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'id' })
+      }
+    }
+  })
 }
 
-function cancelReminder(id) {
-  if (reminders.has(id)) {
-    clearTimeout(reminders.get(id))
-    reminders.delete(id)
+async function saveReminderToDB(id, text, triggerAt) {
+  try {
+    const db = await openDB()
+    const tx = db.transaction(STORE_NAME, 'readwrite')
+    tx.objectStore(STORE_NAME).put({ id, text, triggerAt })
+    await new Promise((resolve, reject) => {
+      tx.oncomplete = resolve
+      tx.onerror = () => reject(tx.error)
+    })
+  } catch (e) {
+    console.error('Failed to save reminder to IndexedDB:', e)
+  }
+}
+
+async function deleteReminderFromDB(id) {
+  try {
+    const db = await openDB()
+    const tx = db.transaction(STORE_NAME, 'readwrite')
+    tx.objectStore(STORE_NAME).delete(id)
+    await new Promise((resolve, reject) => {
+      tx.oncomplete = resolve
+      tx.onerror = () => reject(tx.error)
+    })
+  } catch (e) {
+    console.error('Failed to delete reminder from IndexedDB:', e)
+  }
+}
+
+async function getAllRemindersFromDB() {
+  try {
+    const db = await openDB()
+    const tx = db.transaction(STORE_NAME, 'readonly')
+    const store = tx.objectStore(STORE_NAME)
+    return new Promise((resolve, reject) => {
+      const request = store.getAll()
+      request.onsuccess = () => resolve(request.result || [])
+      request.onerror = () => reject(request.error)
+    })
+  } catch (e) {
+    console.error('Failed to get reminders from IndexedDB:', e)
+    return []
+  }
+}
+
+// In-memory timers (for active scheduling within this SW session)
+const activeTimers = new Map()
+
+function scheduleReminderTimer(id, text, triggerAt) {
+  // Cancel existing timer for this id
+  if (activeTimers.has(id)) clearTimeout(activeTimers.get(id))
+  
+  const delay = Math.max(0, triggerAt - Date.now())
+  
+  // Don't schedule timers for past events
+  if (delay <= 0) {
+    // Fire immediately if it's in the past but recent (within 5 min)
+    if (triggerAt > Date.now() - 5 * 60 * 1000) {
+      fireReminder(id, text)
+    }
+    deleteReminderFromDB(id)
+    return
+  }
+  
+  const timer = setTimeout(() => {
+    fireReminder(id, text)
+    activeTimers.delete(id)
+    deleteReminderFromDB(id)
+  }, delay)
+  
+  activeTimers.set(id, timer)
+}
+
+function fireReminder(id, text) {
+  self.registration.showNotification('LifePilot', {
+    body: text,
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    tag: 'reminder-' + id,
+    requireInteraction: true,
+    data: { itemId: id },
+    actions: [
+      { action: 'open', title: 'Open' },
+      { action: 'done', title: 'Done' },
+      { action: 'snooze', title: '1hr later' },
+    ],
+  })
+}
+
+async function scheduleReminder(id, text, triggerAt) {
+  // Save to IndexedDB for persistence
+  await saveReminderToDB(id, text, triggerAt)
+  // Set up the in-memory timer for this session
+  scheduleReminderTimer(id, text, triggerAt)
+}
+
+async function cancelReminder(id) {
+  if (activeTimers.has(id)) {
+    clearTimeout(activeTimers.get(id))
+    activeTimers.delete(id)
+  }
+  await deleteReminderFromDB(id)
+}
+
+// Restore reminders from IndexedDB when SW activates
+async function restoreReminders() {
+  const reminders = await getAllRemindersFromDB()
+  for (const reminder of reminders) {
+    scheduleReminderTimer(reminder.id, reminder.text, reminder.triggerAt)
   }
 }
 
