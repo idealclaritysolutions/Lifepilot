@@ -1,0 +1,595 @@
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { useAuth } from '@/lib/auth'
+import { Toaster } from '@/components/ui/sonner'
+import { OnboardingFlow } from '@/components/OnboardingFlow'
+import { MainApp } from '@/components/MainApp'
+import { AccountView } from '@/components/AccountView'
+import { IOSInstallPrompt } from '@/components/IOSInstallPrompt'
+import { useNotifications } from '@/hooks/use-notifications'
+import { useLocation, type UserLocation } from '@/hooks/use-location'
+import { useDailyNudges } from '@/hooks/use-daily-nudges'
+import { saveUserData, loadUserData } from '@/lib/supabase'
+
+export interface LifeItem {
+  id: string
+  text: string
+  category: 'meal' | 'health' | 'finance' | 'home' | 'family' | 'errand' | 'general' | 'grocery'
+  status: 'pending' | 'done' | 'snoozed'
+  createdAt: string
+  dueDate?: string
+  dueTime?: string
+  snoozedUntil?: string
+  snoozeCount: number
+  lastNudged?: string
+  completedAt?: string
+}
+
+export interface UserProfile {
+  name: string
+  household: string[]
+  priorities: string[]
+  onboarded: boolean
+  notificationsEnabled?: boolean
+  locationEnabled?: boolean
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: string
+}
+
+export interface JournalEntry {
+  id: string
+  content: string
+  mood?: 'great' | 'good' | 'okay' | 'tough' | 'rough'
+  createdAt: string
+  aiReflection?: string
+  themes?: string[]
+}
+
+// ─── SUBSCRIPTION SYSTEM ──────────────────────────────────────────
+
+export type SubscriptionTier = 'free' | 'pro' | 'premium' | 'enterprise'
+
+export interface Subscription {
+  tier: SubscriptionTier
+  activatedAt: string
+  expiresAt?: string  // undefined = never expires (lifetime/promo)
+  promoCode?: string
+}
+
+export const TIER_LIMITS: Record<SubscriptionTier, {
+  messagesPerDay: number; journalPerMonth: number; maxPeople: number;
+  searchesPerDay: number; maxLists: number; maxHabits: number;
+}> = {
+  free: { messagesPerDay: 10, journalPerMonth: 5, maxPeople: 3, searchesPerDay: 0, maxLists: 0, maxHabits: 0 },
+  pro: { messagesPerDay: 40, journalPerMonth: 20, maxPeople: 15, searchesPerDay: 5, maxLists: 0, maxHabits: 0 },
+  premium: { messagesPerDay: 100, journalPerMonth: 999, maxPeople: 50, searchesPerDay: 20, maxLists: 10, maxHabits: 15 },
+  enterprise: { messagesPerDay: 300, journalPerMonth: 999, maxPeople: 999, searchesPerDay: 75, maxLists: 999, maxHabits: 50 },
+}
+
+// Feature access by tier
+export function hasFeature(tier: SubscriptionTier, feature: string): boolean {
+  const FREE_FEATURES = ['board', 'push_notifications', 'basic_chat', 'basic_journal']
+  const PRO_FEATURES = [...FREE_FEATURES, 'voice_journal', 'theme_detection', 'weekly_recaps', 'document_scanning', 'location_search', 'calendar', 'daily_nudges', 'web_search', 'unlimited_people']
+  const PREMIUM_FEATURES = [...PRO_FEATURES, 'shared_lists', 'habit_tracking', 'monthly_report', 'journal_export', 'custom_themes', 'purchase_intelligence']
+  const ENTERPRISE_FEATURES = [...PREMIUM_FEATURES, 'coaching_calls', 'weekly_checkins']
+
+  const tierFeatures: Record<SubscriptionTier, string[]> = {
+    free: FREE_FEATURES,
+    pro: PRO_FEATURES,
+    premium: PREMIUM_FEATURES,
+    enterprise: ENTERPRISE_FEATURES,
+  }
+  return tierFeatures[tier]?.includes(feature) || false
+}
+
+// Plan name mapping for user-facing text
+export const PLAN_NAMES: Record<SubscriptionTier, string> = {
+  free: 'Clarity Starter',
+  pro: 'Life Pilot',
+  premium: 'Inner Circle',
+  enterprise: 'Guided',
+}
+
+// Promo codes: FOUNDING100 = premium forever, BETA2026 = premium 90 days, etc.
+export const PROMO_CODES: Record<string, { tier: SubscriptionTier; durationDays: number | null; label: string }> = {
+  'FOUNDING100': { tier: 'premium', durationDays: null, label: 'Founding Member — Inner Circle forever' },
+  'LIFEPILOT2026': { tier: 'premium', durationDays: null, label: 'Founding Member — Inner Circle forever' },
+  'BETA2026': { tier: 'premium', durationDays: 90, label: 'Beta Tester — Inner Circle for 90 days' },
+  'FRIEND50': { tier: 'premium', durationDays: 60, label: 'Friend of LifePilot — Inner Circle for 60 days' },
+  'LAUNCH30': { tier: 'premium', durationDays: 30, label: 'Launch Special — Inner Circle for 30 days' },
+}
+
+// ─── HABITS SYSTEM ────────────────────────────────────────────────
+
+export interface Habit {
+  id: string
+  name: string
+  emoji: string
+  frequency: 'daily' | 'weekdays' | 'weekly' | 'custom'
+  customDays?: number[]  // 0=Sun, 1=Mon, ... 6=Sat for custom frequency
+  completions: string[]  // ISO date strings of completion days
+  createdAt: string
+  notes?: string
+  streakBest: number
+  category?: 'morning' | 'health' | 'learning' | 'evening' | 'fitness' | 'mindfulness' | 'other'
+  reminderTime?: string  // HH:MM format
+  targetValue?: number   // For measurable habits (e.g., 8 glasses, 30 minutes)
+  targetUnit?: string    // e.g., "glasses", "minutes", "pages"
+  completionValues?: Record<string, number>  // date -> actual value
+}
+
+// ─── PURCHASE TRACKING ───────────────────────────────────────────
+
+export interface Purchase {
+  id: string
+  item: string
+  store?: string
+  price?: number
+  category?: string
+  date: string
+  reorderDays?: number  // estimated days until they need to buy again
+}
+
+// ─── PEOPLE & LIFE EVENTS SYSTEM ───────────────────────────────────
+
+export interface LifeEvent {
+  id: string
+  label: string  // "Birthday", "Wedding Anniversary", "School Reunion", etc.
+  type: 'birthday' | 'anniversary' | 'wedding' | 'graduation' | 'reunion' | 'memorial' | 'custom'
+  date: string   // MM-DD format for recurring, or YYYY-MM-DD for one-time
+  year?: number  // Original year (to calculate "turning 30" or "5th anniversary")
+  recurring: boolean
+  notes?: string
+}
+
+export interface Person {
+  id: string
+  name: string
+  relationship: string  // "Mom", "Best friend", "Coworker", "Partner", etc.
+  closeness: 'inner-circle' | 'close' | 'casual'
+  events: LifeEvent[]
+  notes: string  // "Loves sushi, just had a baby, allergic to cats"
+  giftHistory: { date: string; description: string }[]
+  createdAt: string
+}
+
+export interface AppState {
+  profile: UserProfile
+  items: LifeItem[]
+  chatHistory: ChatMessage[]
+  journal: JournalEntry[]
+  people: Person[]
+  habits: Habit[]
+  purchases: Purchase[]
+  subscription: Subscription
+  usageToday: { messages: number; date: string }
+  location?: UserLocation | null
+}
+
+const DEFAULT_SUBSCRIPTION: Subscription = {
+  tier: 'free',
+  activatedAt: new Date().toISOString(),
+}
+
+const DEFAULT_STATE: AppState = {
+  profile: { name: '', household: [], priorities: [], onboarded: false },
+  items: [],
+  chatHistory: [],
+  journal: [],
+  people: [],
+  habits: [],
+  purchases: [],
+  subscription: DEFAULT_SUBSCRIPTION,
+  usageToday: { messages: 0, date: new Date().toDateString() },
+  location: null,
+}
+
+const STORAGE_KEY = 'lifepilot-state'
+
+function loadState(): AppState {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      return { ...DEFAULT_STATE, ...parsed }
+    }
+  } catch (e) {
+    console.warn('Failed to load state:', e)
+  }
+  return DEFAULT_STATE
+}
+
+function App() {
+  const [state, setState] = useState<AppState>(loadState)
+  const notifications = useNotifications()
+  const locationHook = useLocation()
+  const { isLoaded: authLoaded, isSignedIn, user: authUser, userName, isRecovery } = useAuth()
+
+  // Cloud sync: load cloud data on sign-in, upload local data on first sign-in
+  const hasLoadedCloudRef = useRef(false)
+  useEffect(() => {
+    if (!authLoaded) return
+    if (!isSignedIn || !authUser) { hasLoadedCloudRef.current = false; return }
+    if (hasLoadedCloudRef.current) return
+    hasLoadedCloudRef.current = true
+
+    const syncCloud = async () => {
+      console.log('[LifePilot] Syncing cloud data for:', authUser.id)
+      const cloudData = await loadUserData(authUser.id)
+      if (cloudData && cloudData.profile?.onboarded) {
+        // Cloud data exists — use it as source of truth
+        console.log('[LifePilot] Cloud data found, loading to device')
+        setState(prev => ({ ...DEFAULT_STATE, ...cloudData }))
+      } else {
+        // No cloud data — upload local data if user has any
+        const localData = loadState()
+        if (localData.profile?.onboarded) {
+          console.log('[LifePilot] No cloud data, uploading local data')
+          await saveUserData(authUser.id, { ...localData, chatHistory: (localData.chatHistory || []).slice(-100) })
+        } else {
+          const name = userName || 'Friend'
+          setState(prev => ({ ...prev, profile: { ...prev.profile, name, onboarded: true } }))
+        }
+      }
+    }
+    syncCloud()
+  }, [authLoaded, isSignedIn, authUser?.id])
+  useDailyNudges(state)
+
+  // Re-sync from cloud when app becomes visible (handles multi-device)
+  useEffect(() => {
+    if (!isSignedIn || !authUser?.id) return
+    const handleVisibility = async () => {
+      if (document.visibilityState === 'visible') {
+        const cloudData = await loadUserData(authUser.id)
+        if (cloudData && cloudData.profile?.onboarded) {
+          // Compare timestamps — only update if cloud is newer
+          const cloudTime = new Date(cloudData.lastSyncedAt || 0).getTime()
+          const localTime = new Date(state.lastSyncedAt || 0).getTime()
+          if (cloudTime > localTime) {
+            console.log('[LifePilot] Cloud data is newer, syncing to device')
+            setState(prev => ({ ...DEFAULT_STATE, ...cloudData }))
+          }
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [isSignedIn, authUser?.id])
+
+  const syncTimerRef = useRef<any>(null)
+
+  // Save to localStorage on every state change + cloud sync for signed-in users
+  useEffect(() => {
+    try {
+      const toSave = {
+        ...state,
+        chatHistory: state.chatHistory.slice(-100),
+        lastSyncedAt: new Date().toISOString(),
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
+
+      // Cloud sync: debounce to avoid hammering Supabase on rapid changes
+      if (isSignedIn && authUser?.id && state.profile.onboarded) {
+        if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
+        syncTimerRef.current = setTimeout(async () => {
+          console.log('[LifePilot] Syncing to cloud for user:', authUser.id)
+          const ok = await saveUserData(authUser.id, toSave)
+          console.log('[LifePilot] Cloud sync result:', ok)
+        }, 2000) // Save after 2 seconds of inactivity
+      }
+    } catch (e) {
+      console.warn('Failed to save state:', e)
+    }
+  }, [state, isSignedIn, authUser?.id])
+
+  // Listen for COMPLETE_ITEM events from the service worker (notification actions)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const id = (e as CustomEvent).detail?.id
+      if (id) updateItem(id, { status: 'done', completedAt: new Date().toISOString() })
+    }
+    window.addEventListener('lifepilot-complete', handler)
+    return () => window.removeEventListener('lifepilot-complete', handler)
+  }, [])
+
+  // Schedule reminders for items with due dates
+  useEffect(() => {
+    state.items.forEach(item => {
+      if (item.status === 'pending' && item.dueDate && state.profile.notificationsEnabled) {
+        notifications.scheduleReminder(item)
+      }
+    })
+  }, [state.items, state.profile.notificationsEnabled])
+
+  const handleOnboardingComplete = useCallback((profile: UserProfile) => {
+    setState(prev => {
+      // Auto-add household members to People tab
+      const newPeople = profile.household
+        .filter(name => !prev.people.some(p => p.name.toLowerCase() === name.toLowerCase()))
+        .map(name => ({
+          id: 'person-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+          name,
+          relationship: 'Household',
+          closeness: 'inner-circle' as const,
+          notes: 'Added from your household during setup',
+          events: [],
+          giftHistory: [],
+        }))
+      // Build personalized welcome message based on their energy drainers
+      const drainers = profile.priorities || []
+      let welcomeMsg = `Hey ${profile.name}! 🌟 Welcome to LifePilot — I'm so glad you're here.\n\n`
+      
+      if (drainers.length > 0) {
+        welcomeMsg += `I noticed that ${drainers.join(', ').replace(/, ([^,]*)$/, ' and $1')} ${drainers.length === 1 ? 'drains' : 'drain'} your energy the most. I get it — `
+        if (drainers.some(d => /meal|food|cook|dinner/i.test(d))) welcomeMsg += `meal planning alone can eat up hours every week. `
+        if (drainers.some(d => /forgot|remember|task|organiz/i.test(d))) welcomeMsg += `keeping track of everything when life moves fast is exhausting. `
+        if (drainers.some(d => /health|fitness|exercise|doctor/i.test(d))) welcomeMsg += `staying on top of health goals while juggling everything else is a real challenge. `
+        if (drainers.some(d => /money|financ|budget|bill/i.test(d))) welcomeMsg += `financial decisions deserve clarity, not stress. `
+        welcomeMsg += `\n\nThat's exactly why I'm here. Think of me as your personal life operating system — I'll handle the mental load so you can focus on what actually matters to you.\n\n`
+      } else {
+        welcomeMsg += `Think of me as your personal life operating system — I handle the mental load so you can focus on what actually matters.\n\n`
+      }
+      
+      welcomeMsg += `Would you like to see the full suite of features I offer? I can walk you through everything I can do for you! 💫`
+
+      return {
+        ...prev,
+        profile: { ...profile, onboarded: true },
+        people: [...prev.people, ...newPeople],
+        chatHistory: [{ role: 'assistant' as const, content: welcomeMsg, timestamp: new Date().toISOString() }],
+      }
+    })
+  }, [])
+
+  const addItem = useCallback((item: LifeItem) => {
+    setState(prev => ({ ...prev, items: [item, ...prev.items] }))
+  }, [])
+
+  const updateItem = useCallback((id: string, updates: Partial<LifeItem>) => {
+    setState(prev => ({
+      ...prev,
+      items: prev.items.map(i => i.id === id ? { ...i, ...updates } : i),
+    }))
+  }, [])
+
+  const removeItem = useCallback((id: string) => {
+    notifications.cancelReminder(id)
+    setState(prev => ({ ...prev, items: prev.items.filter(i => i.id !== id) }))
+  }, [])
+
+  const addChat = useCallback((msg: { role: 'user' | 'assistant'; content: string }) => {
+    setState(prev => ({
+      ...prev,
+      chatHistory: [...prev.chatHistory, { ...msg, timestamp: new Date().toISOString() }],
+    }))
+  }, [])
+
+  const addJournalEntry = useCallback((entry: JournalEntry) => {
+    setState(prev => ({ ...prev, journal: [entry, ...prev.journal] }))
+  }, [])
+
+  const deleteJournalEntry = useCallback((id: string) => {
+    setState(prev => ({ ...prev, journal: prev.journal.filter(e => e.id !== id) }))
+  }, [])
+
+  const updateJournalEntry = useCallback((id: string, updates: Partial<JournalEntry>) => {
+    setState(prev => ({
+      ...prev,
+      journal: prev.journal.map(e => e.id === id ? { ...e, ...updates } : e),
+    }))
+  }, [])
+
+  const updateProfile = useCallback((updates: Partial<UserProfile>) => {
+    setState(prev => ({ ...prev, profile: { ...prev.profile, ...updates } }))
+  }, [])
+
+  const setUserLocation = useCallback((loc: UserLocation | null) => {
+    setState(prev => ({ ...prev, location: loc }))
+  }, [])
+
+  // ─── People management ───────────────────────────────────────────
+  const addPerson = useCallback((person: Person) => {
+    setState(prev => ({ ...prev, people: [person, ...prev.people] }))
+  }, [])
+
+  const updatePerson = useCallback((id: string, updates: Partial<Person>) => {
+    setState(prev => ({
+      ...prev,
+      people: prev.people.map(p => p.id === id ? { ...p, ...updates } : p),
+    }))
+  }, [])
+
+  const removePerson = useCallback((id: string) => {
+    setState(prev => ({ ...prev, people: prev.people.filter(p => p.id !== id) }))
+  }, [])
+
+  // ─── Habits management ────────────────────────────────────────────
+  const addHabit = useCallback((habit: Habit) => {
+    setState(prev => ({ ...prev, habits: [habit, ...prev.habits] }))
+  }, [])
+
+  const toggleHabitDay = useCallback((habitId: string, dateStr: string) => {
+    setState(prev => ({
+      ...prev,
+      habits: prev.habits.map(h => {
+        if (h.id !== habitId) return h
+        const has = h.completions.includes(dateStr)
+        const completions = has ? h.completions.filter(d => d !== dateStr) : [...h.completions, dateStr]
+        // Calculate best streak
+        const sorted = [...completions].sort()
+        let streak = 0, best = 0, current = 0
+        for (let i = 0; i < sorted.length; i++) {
+          if (i === 0) { current = 1 } else {
+            const prev = new Date(sorted[i - 1])
+            const curr = new Date(sorted[i])
+            const diff = (curr.getTime() - prev.getTime()) / 86400000
+            current = diff <= 1 ? current + 1 : 1
+          }
+          best = Math.max(best, current)
+        }
+        return { ...h, completions, streakBest: best }
+      }),
+    }))
+  }, [])
+
+  const removeHabit = useCallback((id: string) => {
+    setState(prev => ({ ...prev, habits: prev.habits.filter(h => h.id !== id) }))
+  }, [])
+
+  const updateHabit = useCallback((id: string, updates: Partial<Habit>) => {
+    setState(prev => ({ ...prev, habits: prev.habits.map(h => h.id === id ? { ...h, ...updates } : h) }))
+  }, [])
+
+  // ─── Purchases ────────────────────────────────────────────────────
+  const addPurchase = useCallback((purchase: Purchase) => {
+    setState(prev => ({ ...prev, purchases: [purchase, ...prev.purchases] }))
+  }, [])
+
+  // ─── Subscription ─────────────────────────────────────────────────
+  const applyPromoCode = useCallback((code: string): boolean => {
+    const promo = PROMO_CODES[code.toUpperCase().trim()]
+    if (!promo) return false
+    const now = new Date()
+    setState(prev => ({
+      ...prev,
+      subscription: {
+        tier: promo.tier,
+        activatedAt: now.toISOString(),
+        expiresAt: promo.durationDays ? new Date(now.getTime() + promo.durationDays * 86400000).toISOString() : undefined,
+        promoCode: code.toUpperCase().trim(),
+      },
+    }))
+    return true
+  }, [])
+
+  const setSubscription = useCallback((sub: Subscription) => {
+    setState(prev => ({ ...prev, subscription: sub }))
+  }, [])
+
+  // Track daily message usage
+  const incrementMessageCount = useCallback(() => {
+    setState(prev => {
+      const today = new Date().toDateString()
+      const usage = prev.usageToday.date === today ? prev.usageToday : { messages: 0, date: today }
+      return { ...prev, usageToday: { messages: usage.messages + 1, date: today } }
+    })
+  }, [])
+
+  // ─── Proactive event reminders ───────────────────────────────────
+  useEffect(() => {
+    if (!state.profile.notificationsEnabled) return
+    const now = new Date()
+    const today = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+
+    // Check each person's events for upcoming dates
+    state.people.forEach(person => {
+      person.events.forEach(event => {
+        const eventMMDD = event.date.length === 5 ? event.date : event.date.substring(5) // extract MM-DD
+        const [em, ed] = eventMMDD.split('-').map(Number)
+        
+        // Calculate days until event — use local date constructor to avoid UTC shift
+        const thisYear = now.getFullYear()
+        let eventThisYear = new Date(thisYear, em - 1, ed)
+        if (eventThisYear < now) eventThisYear = new Date(thisYear + 1, em - 1, ed)
+        const daysUntil = Math.floor((eventThisYear.getTime() - now.getTime()) / 86400000)
+
+        // Inner circle: 14-day, 7-day, 1-day, and day-of (buffer for shipping gifts)
+        // Close: 7-day, 3-day, 1-day, day-of
+        // Casual: 1-day, day-of
+        const remindDays = person.closeness === 'inner-circle' ? [14, 7, 1, 0]
+          : person.closeness === 'close' ? [7, 3, 1, 0]
+          : [1, 0]
+
+        if (remindDays.includes(daysUntil)) {
+          const yearInfo = event.year ? ` (${event.type === 'birthday' ? `turning ${thisYear - event.year}` : `${thisYear - event.year} years`})` : ''
+          const urgency = daysUntil === 0 ? '🎉 TODAY' : daysUntil === 1 ? '⏰ TOMORROW' : `📅 In ${daysUntil} days`
+
+          notifications.sendNotification(
+            `${urgency}: ${person.name}'s ${event.label}`,
+            `${person.name}'s ${event.label}${yearInfo} is ${daysUntil === 0 ? 'today' : daysUntil === 1 ? 'tomorrow' : `in ${daysUntil} days`}!${person.notes ? ` (${person.notes.substring(0, 50)})` : ''}`,
+            { personId: person.id, eventId: event.id }
+          )
+        }
+      })
+    })
+  }, [state.people, state.profile.notificationsEnabled])
+
+  const handleReset = () => {
+    localStorage.removeItem(STORAGE_KEY)
+    setState(DEFAULT_STATE)
+  }
+
+  return (
+    <div className="min-h-[100dvh] bg-[#FAF9F6]">
+      <Toaster position="top-center" richColors />
+      <OfflineIndicator />
+      <IOSInstallPrompt />
+      {/* While Clerk is loading, show a brief splash instead of flashing onboarding */}
+      {/* Password recovery flow */}
+      {isRecovery ? (
+        <AccountView onClose={() => {}} />
+      ) : !authLoaded && !state.profile.onboarded ? (
+        <div className="min-h-[100dvh] flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-300 to-orange-400 flex items-center justify-center mx-auto mb-4 shadow-lg">
+              <span className="text-2xl">✦</span>
+            </div>
+            <p className="text-sm text-stone-400">Loading...</p>
+          </div>
+        </div>
+      ) : !state.profile.onboarded ? (
+        <OnboardingFlow onComplete={handleOnboardingComplete} />
+      ) : (
+        <MainApp
+          state={state}
+          addItem={addItem}
+          updateItem={updateItem}
+          removeItem={removeItem}
+          addChat={addChat}
+          addJournalEntry={addJournalEntry}
+          deleteJournalEntry={deleteJournalEntry}
+          updateJournalEntry={updateJournalEntry}
+          updateProfile={updateProfile}
+          setUserLocation={setUserLocation}
+          addPerson={addPerson}
+          updatePerson={updatePerson}
+          removePerson={removePerson}
+          addHabit={addHabit}
+          toggleHabitDay={toggleHabitDay}
+          removeHabit={removeHabit}
+          updateHabit={updateHabit}
+          addPurchase={addPurchase}
+          applyPromoCode={applyPromoCode}
+          setSubscription={setSubscription}
+          incrementMessageCount={incrementMessageCount}
+          notifications={notifications}
+          locationHook={locationHook}
+          onReset={handleReset}
+        />
+      )}
+    </div>
+  )
+}
+
+function OfflineIndicator() {
+  const [offline, setOffline] = useState(!navigator.onLine)
+  useEffect(() => {
+    const on = () => setOffline(false)
+    const off = () => setOffline(true)
+    window.addEventListener('online', on)
+    window.addEventListener('offline', off)
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
+  }, [])
+  if (!offline) return null
+  return (
+    <div className="fixed top-0 left-0 right-0 z-[9999] bg-stone-800 text-white text-center text-xs py-1.5 font-medium">
+      You're offline — changes will sync when you reconnect
+    </div>
+  )
+}
+
+export default App
