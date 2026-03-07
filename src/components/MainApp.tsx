@@ -14,7 +14,7 @@ import { AccountView } from '@/components/AccountView'
 import { SharedListView } from '@/components/SharedListView'
 import type { AppState, LifeItem, JournalEntry, UserProfile, Person, Habit, Purchase, Subscription, TIER_LIMITS } from '@/App'
 import type { UserLocation } from '@/hooks/use-location'
-import { MessageCircle, LayoutGrid, Bell, BookOpen, Users, Flame, Settings as SettingsIcon, Crown, UserCircle } from 'lucide-react'
+import { MessageCircle, LayoutGrid, Bell, BookOpen, Users, Flame, Settings as SettingsIcon, Crown, UserCircle, Sparkles } from 'lucide-react'
 
 interface Props {
   state: AppState
@@ -168,11 +168,14 @@ export function MainApp(props: Props) {
         <TabsContent value="journal" className="flex-1 overflow-auto m-0 data-[state=inactive]:hidden">
           <JournalView state={state} addJournalEntry={addJournalEntry} deleteJournalEntry={deleteJournalEntry} updateJournalEntry={updateJournalEntry} />
         </TabsContent>
+        <TabsContent value="nudges" className="flex-1 overflow-auto m-0 data-[state=inactive]:hidden">
+          <NudgesView state={state} addChat={addChat} onNavigateToChat={() => handleTabChange('chat')} />
+        </TabsContent>
         <TabsContent value="habits" className="flex-1 overflow-auto m-0 data-[state=inactive]:hidden">
           <HabitsView state={state} addHabit={addHabit} toggleHabitDay={toggleHabitDay} removeHabit={removeHabit} updateHabit={updateHabit} />
         </TabsContent>
 
-        <TabsList className="flex-none grid grid-cols-5 h-16 bg-white border-t border-stone-100 rounded-none shadow-[0_-2px_10px_rgba(0,0,0,0.04)]">
+        <TabsList className="flex-none grid grid-cols-6 h-16 bg-white border-t border-stone-100 rounded-none shadow-[0_-2px_10px_rgba(0,0,0,0.04)]">
           <TabsTrigger value="chat"
             className="flex flex-col items-center gap-0.5 data-[state=active]:text-amber-600 data-[state=active]:bg-transparent text-stone-600 rounded-none border-0 shadow-none">
             <MessageCircle className="w-5 h-5" /><span className="text-xs font-medium">Chat</span>
@@ -190,6 +193,10 @@ export function MainApp(props: Props) {
           <TabsTrigger value="journal"
             className="flex flex-col items-center gap-0.5 data-[state=active]:text-indigo-600 data-[state=active]:bg-transparent text-stone-600 rounded-none border-0 shadow-none">
             <BookOpen className="w-5 h-5" /><span className="text-xs font-medium">Journal</span>
+          </TabsTrigger>
+          <TabsTrigger value="nudges"
+            className="flex flex-col items-center gap-0.5 data-[state=active]:text-violet-600 data-[state=active]:bg-transparent text-stone-600 rounded-none border-0 shadow-none">
+            <Sparkles className="w-5 h-5" /><span className="text-xs font-medium">Nudges</span>
           </TabsTrigger>
           <TabsTrigger value="habits"
             className="flex flex-col items-center gap-0.5 data-[state=active]:text-orange-600 data-[state=active]:bg-transparent text-stone-600 rounded-none border-0 shadow-none">
