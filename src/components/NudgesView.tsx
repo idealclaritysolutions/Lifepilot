@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import type { AppState } from '@/App'
 import { generateNudges, QUICK_ACTIONS } from '@/lib/ai-engine'
-import { Bell, Sparkles, ArrowRight, Sun, Moon, Coffee, Sunset } from 'lucide-react'
+import { Bell, Sun, Moon, Coffee, Sunset, FlaskConical } from 'lucide-react'
+import { testNudgeNotification, getNotificationStatus } from '@/lib/notifications'
 
 interface Props {
   state: AppState
@@ -125,6 +126,55 @@ export function NudgesView({ state, addChat, onNavigateToChat }: Props) {
           ))}
         </div>
       </div>
+
+      {/* Test Nudge Notifications (Dev/Debug) */}
+      {getNotificationStatus() === 'granted' && (
+        <div className="mb-4">
+          <h3 className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-3 px-1 flex items-center gap-2">
+            <FlaskConical className="w-3 h-3" />
+            Test Push Notifications
+          </h3>
+          <div className="bg-stone-50 rounded-xl border border-stone-200 p-4">
+            <p className="text-xs text-stone-500 mb-3">
+              Tap a button to send a test notification immediately:
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => testNudgeNotification('feature')}
+                className="text-xs"
+              >
+                Feature Discovery
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => testNudgeNotification('task')}
+                className="text-xs"
+              >
+                Task Reminder
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => testNudgeNotification('journal')}
+                className="text-xs"
+              >
+                Journal Reminder
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => testNudgeNotification('habit')}
+                className="text-xs"
+              >
+                Habit Check-in
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Motivational footer */}
       <div className="mt-6 text-center py-4">
