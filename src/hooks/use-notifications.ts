@@ -8,11 +8,13 @@ export function useNotifications() {
   const swRef = useRef<ServiceWorkerRegistration | null>(null)
 
   useEffect(() => {
+    console.log('[v0] useNotifications init, hasSWSupport:', hasSWSupport)
     if (!hasSWSupport) return
     
     navigator.serviceWorker.register('/sw.js').then(reg => {
+      console.log('[v0] Service worker registered successfully:', reg)
       swRef.current = reg
-    }).catch(err => console.warn('SW failed:', err))
+    }).catch(err => console.error('[v0] SW registration failed:', err))
 
     navigator.serviceWorker.addEventListener('message', (event) => {
       if (event.data?.type === 'COMPLETE_ITEM') {
@@ -22,12 +24,27 @@ export function useNotifications() {
   }, [])
 
   const requestPermission = useCallback(async (): Promise<boolean> => {
-    if (!hasNotificationSupport) return false
+    console.log('[v0] requestPermission called, hasNotificationSupport:', hasNotificationSupport)
+    if (!hasNotificationSupport) {
+      console.log('[v0] No notification support in this browser')
+      return false
+    }
     try {
-      if (Notification.permission === 'granted') return true
+      console.log('[v0] Current Notification.permission:', Notification.permission)
+      if (Notification.permission === 'granted') {
+        console.log('[v0] Already granted')
+        return true
+      }
+      if (Notification.permission === 'denied') {
+        console.log('[v0] Permission was previously denied by user')
+        return false
+      }
+      console.log('[v0] Requesting permission...')
       const result = await Notification.requestPermission()
+      console.log('[v0] Permission result:', result)
       return result === 'granted'
-    } catch {
+    } catch (err) {
+      console.error('[v0] Error requesting permission:', err)
       return false
     }
   }, [])
