@@ -3,6 +3,6 @@
   "target": {
     "namespace": "android_app",
     "package_name": "app.getlifepilot.twa",
-    "sha256_cert_fingerprints": ["PLACEHOLDER_SHA256_FINGERPRINT"]
+    "sha256_cert_fingerprints": ["DC:D9:F6:91:82:5D:EB:29:15:F0:EB:94:E6:F5:F3:CE:E7:43:77:D2:FA:3B:C2:52:66:9D:9B:F6:F4:3D:5E:97"]
   }
 }]
