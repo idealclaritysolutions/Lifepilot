@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import type { AppState, UserProfile } from '@/App'
 import type { UserLocation } from '@/hooks/use-location'
-import { ArrowLeft, Trash2, User, Heart, Shield, Lock, Bell, MapPin, Calendar, Loader2, X, Plus, Zap } from 'lucide-react'
+import { ArrowLeft, Trash2, User, Heart, Shield, Lock, Bell, MapPin, Calendar, Loader2, X, Plus, Zap, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { LegalPage } from '@/components/LegalPages'
 import { AccountSection, useAuth } from '@/components/AuthGate'
@@ -82,8 +82,28 @@ export function Settings({ state, notifications, locationHook, updateProfile, se
     if (granted) {
       updateProfile({ notificationsEnabled: true })
       toast.success('Notifications enabled! I\'ll remind you when things are due.')
-      // Send a test notification
-      notifications.sendNotification('LifePilot ✦', `Hey ${state.profile.name}! Reminders are now active. I'll nudge you when tasks are due.`)
+      notifications.sendNotification('Life Pilot AI ✦', `Hey ${state.profile.name}! Reminders are now active. I'll nudge you when tasks are due.`)
+      
+      // Subscribe to Web Push for server-sent notifications
+      try {
+        const reg = await navigator.serviceWorker?.ready
+        if (reg) {
+          const vapidPublicKey = 'BPQLndj1vTD1lJaoXHuPUIqkhEJxfqgRayBrKIoswHIWRf5RNJdTeH79tk7AKNWGgVUxDgSmiaQbI5ePpXCjZuc'
+          const sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: Uint8Array.from(atob(vapidPublicKey.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)),
+          })
+          // Send subscription to server
+          await fetch('/api/push-subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user?.id || 'anonymous', subscription: sub.toJSON() }),
+          })
+          console.log('[Push] Web Push subscribed successfully')
+        }
+      } catch (err) {
+        console.warn('[Push] Web Push subscription failed:', err)
+      }
     } else {
       toast.error('Notifications blocked. Check your browser settings.')
     }
@@ -285,7 +305,7 @@ export function Settings({ state, notifications, locationHook, updateProfile, se
 
         {/* About */}
         <div className="bg-white rounded-2xl border border-stone-100 p-5 shadow-sm">
-          <h3 className="font-semibold text-stone-800 mb-2 text-sm">About LifePilot</h3>
+          <h3 className="font-semibold text-stone-800 mb-2 text-sm">About Life Pilot AI</h3>
           <p className="text-sm text-stone-500 leading-relaxed">Your AI co-pilot for everything life throws at you. Built by Ideal Clarity Solutions.</p>
           <div className="flex items-center gap-1.5 mt-3 text-xs text-stone-600">
             <span>Made with</span><Heart className="w-3 h-3 text-rose-400 fill-rose-400" /><span>for overwhelmed humans</span>
@@ -333,6 +353,43 @@ export function Settings({ state, notifications, locationHook, updateProfile, se
             <button onClick={() => setLegalPage('terms')} className="w-full flex items-center justify-between py-2 text-sm text-stone-600 hover:text-stone-800">
               <span>Terms of Service</span>
               <span className="text-stone-600">→</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Contact & Feedback */}
+        <div className="bg-white rounded-2xl border border-stone-100 p-5 shadow-sm">
+          <h3 className="font-semibold text-stone-800 text-sm mb-3">Help & Feedback</h3>
+          <div className="space-y-2">
+            <a href="mailto:support@getlifepilot.app?subject=LifePilot Support Request"
+              className="w-full flex items-center justify-between py-3 px-4 rounded-xl bg-stone-50 hover:bg-stone-100 transition-colors">
+              <div>
+                <p className="text-sm font-medium text-stone-800">Contact Support</p>
+                <p className="text-xs text-stone-500">Report a bug or get help</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-stone-400" />
+            </a>
+            <a href="mailto:support@getlifepilot.app?subject=LifePilot Feature Request"
+              className="w-full flex items-center justify-between py-3 px-4 rounded-xl bg-stone-50 hover:bg-stone-100 transition-colors">
+              <div>
+                <p className="text-sm font-medium text-stone-800">Share Feedback</p>
+                <p className="text-xs text-stone-500">Suggest features or improvements</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-stone-400" />
+            </a>
+            <button onClick={() => {
+              const msg = prompt('What feedback would you like to share? We read every message.')
+              if (msg?.trim()) {
+                // Open email with feedback pre-filled
+                window.open(`mailto:support@getlifepilot.app?subject=LifePilot Quick Feedback&body=${encodeURIComponent(msg.trim())}`, '_self')
+              }
+            }}
+              className="w-full flex items-center justify-between py-3 px-4 rounded-xl bg-amber-50 hover:bg-amber-100 transition-colors">
+              <div>
+                <p className="text-sm font-medium text-amber-800">Quick Feedback</p>
+                <p className="text-xs text-amber-600">Tell us what you think — right here</p>
+              </div>
+              <span className="text-lg">💬</span>
             </button>
           </div>
         </div>

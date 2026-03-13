@@ -49,7 +49,7 @@ export function SetupPrompt({ onGoToSettings, onSkip }: Props) {
             <div>
               <p className="text-sm font-semibold text-stone-800">Push Notifications</p>
               <p className="text-xs text-stone-500 leading-relaxed mt-0.5">
-                The best ideas and reminders mean nothing if they don't reach you at the right moment. Enable notifications so LifePilot can nudge you before deadlines slip, birthdays pass, and habits break.
+                The best ideas and reminders mean nothing if they don't reach you at the right moment. Enable notifications so Life Pilot AI can nudge you before deadlines slip, birthdays pass, and habits break.
               </p>
             </div>
           </div>
@@ -61,7 +61,7 @@ export function SetupPrompt({ onGoToSettings, onSkip }: Props) {
             <div>
               <p className="text-sm font-semibold text-stone-800">Location</p>
               <p className="text-xs text-stone-500 leading-relaxed mt-0.5">
-                When you need to find a pharmacy, a restaurant, or the nearest anything — LifePilot can only help if it knows where you are. Your location stays private and is never shared.
+                When you need to find a pharmacy, a restaurant, or the nearest anything — Life Pilot AI can only help if it knows where you are. Your location stays private and is never shared.
               </p>
             </div>
           </div>

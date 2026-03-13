@@ -3,9 +3,10 @@ import { useAuth } from '@/lib/auth'
 import {
   getMyHouseholds, createHousehold, joinHousehold, leaveHousehold,
   getSharedItems, addSharedItem, toggleSharedItem, removeSharedItem, updateSharedItemNotes, updateSharedItemText,
-  subscribeToSharedItems, type SharedItem, type HouseholdInfo
+  subscribeToSharedItems, getUserDisplayName, logActivity, getActivityLog, renameHousehold, getHouseholdMembers,
+  type SharedItem, type HouseholdInfo, type ActivityEntry, type HouseholdMember
 } from '@/lib/supabase'
-import { ArrowLeft, Plus, Users, Copy, Check, Trash2, ShoppingCart, LogOut, Loader2, ChevronRight, StickyNote, Link as LinkIcon, Pencil, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Plus, Users, Copy, Check, Trash2, ShoppingCart, LogOut, Loader2, ChevronRight, StickyNote, Link as LinkIcon, Pencil, ExternalLink, History, Clock, Crown } from 'lucide-react'
 import { toast } from 'sonner'
 import type { AppState } from '@/App'
 
@@ -18,8 +19,30 @@ function isUrl(str: string): boolean {
   return /^https?:\/\//i.test(str.trim())
 }
 
-function shopSearchUrl(itemText: string): string {
-  return `https://www.amazon.com/s?k=${encodeURIComponent(itemText)}`
+// Intelligent context-aware link generator
+function getSmartLink(itemText: string, listName: string): { url: string; label: string } {
+  const text = (itemText + ' ' + listName).toLowerCase()
+  
+  // Travel / Hotels
+  if (/hotel|stay|airbnb|lodge|resort|accommodat|booking|check.in|room/i.test(text))
+    return { url: `https://www.google.com/travel/hotels?q=${encodeURIComponent(itemText)}`, label: 'Find hotels' }
+  // Flights
+  if (/flight|fly|airline|airport|travel to|trip to|depart|arrival/i.test(text))
+    return { url: `https://www.google.com/travel/flights?q=${encodeURIComponent(itemText)}`, label: 'Find flights' }
+  // Restaurants / Food
+  if (/restaurant|eat at|dinner at|lunch at|brunch|cafe|bistro|reservat/i.test(text))
+    return { url: `https://www.google.com/maps/search/restaurants+${encodeURIComponent(itemText)}`, label: 'Find restaurant' }
+  // Locations / Places
+  if (/visit|go to|explore|museum|park|beach|landmark|address|location|directions/i.test(text))
+    return { url: `https://www.google.com/maps/search/${encodeURIComponent(itemText)}`, label: 'View on map' }
+  // Events / Tickets
+  if (/ticket|concert|show|event|game|match|perform|movie/i.test(text))
+    return { url: `https://www.google.com/search?q=${encodeURIComponent(itemText + ' tickets')}`, label: 'Find tickets' }
+  // Recipes
+  if (/recipe|cook|bake|make |prepare|ingredient/i.test(text))
+    return { url: `https://www.google.com/search?q=${encodeURIComponent(itemText + ' recipe')}`, label: 'Find recipe' }
+  // Default: shopping
+  return { url: `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(itemText)}`, label: 'Shop' }
 }
 
 export function SharedListView({ onClose, state }: Props) {
@@ -30,6 +53,10 @@ export function SharedListView({ onClose, state }: Props) {
   const [items, setItems] = useState<SharedItem[]>([])
   const [newItem, setNewItem] = useState('')
   const [newItemNote, setNewItemNote] = useState('')
+  const [newItemDate, setNewItemDate] = useState('')
+  const [newItemTime, setNewItemTime] = useState('')
+  const [newItemLocation, setNewItemLocation] = useState('')
+  const [showItemDetails, setShowItemDetails] = useState(false)
   const [joinCode, setJoinCode] = useState('')
   const [householdName, setHouseholdName] = useState('')
   const [copied, setCopied] = useState(false)
@@ -38,7 +65,12 @@ export function SharedListView({ onClose, state }: Props) {
   const [editingItem, setEditingItem] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
   const [showCreate, setShowCreate] = useState(false)
-
+  const [nameMap, setNameMap] = useState<Record<string, string>>({})
+  const [activityLog, setActivityLog] = useState<ActivityEntry[]>([])
+  const [showLog, setShowLog] = useState(false)
+  const [renamingList, setRenamingList] = useState(false)
+  const [renameText, setRenameText] = useState('')
+  const [members, setMembers] = useState<HouseholdMember[]>([])
   const isPremium = state.subscription.tier === 'premium' || state.subscription.tier === 'enterprise'
 
   const loadHouseholds = useCallback(async () => {
@@ -49,12 +81,35 @@ export function SharedListView({ onClose, state }: Props) {
     setLoading(false)
   }, [user?.id])
 
-  useEffect(() => { loadHouseholds() }, [loadHouseholds])
+  useEffect(() => {
+    loadHouseholds().then(() => {
+      // Restore last active list on refresh
+      const savedId = sessionStorage.getItem('lp-active-list')
+      if (savedId) {
+        getMyHouseholds(user?.id || '').then(hhs => {
+          const saved = hhs.find(h => h.id === savedId)
+          if (saved) openHousehold(saved)
+        })
+      }
+    })
+  }, [loadHouseholds])
 
   const openHousehold = async (hh: HouseholdInfo) => {
     setActiveHH(hh)
+    sessionStorage.setItem('lp-active-list', hh.id)
     const sharedItems = await getSharedItems(hh.id)
     setItems(sharedItems)
+    // Load members
+    const memberList = await getHouseholdMembers(hh.id)
+    setMembers(memberList)
+    // Resolve names for all item authors
+    const userIds = [...new Set(sharedItems.map(i => i.added_by).filter(Boolean))]
+    const names: Record<string, string> = { ...nameMap }
+    for (const m of memberList) { if (m.name) names[m.user_id] = m.name }
+    for (const uid of userIds) {
+      if (!names[uid]) names[uid] = await getUserDisplayName(uid)
+    }
+    setNameMap(names)
   }
 
   useEffect(() => {
@@ -90,29 +145,50 @@ export function SharedListView({ onClose, state }: Props) {
 
   const handleAddItem = async () => {
     if (!activeHH?.id || !user?.id || !newItem.trim()) return
+    // Pack metadata into notes as structured data
+    const meta: string[] = []
+    if (newItemDate) meta.push(`📅 ${newItemDate}`)
+    if (newItemTime) meta.push(`🕐 ${newItemTime}`)
+    if (newItemLocation) meta.push(`📍 ${newItemLocation}`)
+    if (newItemNote.trim()) meta.push(newItemNote.trim())
+    const fullNotes = meta.join(' · ') || undefined
+    
     await addSharedItem({
       household_id: activeHH.id,
       text: newItem.trim(),
       category: 'grocery',
       checked: false,
       added_by: user.id,
-      notes: newItemNote.trim() || undefined,
+      notes: fullNotes,
     })
+    await logActivity(activeHH.id, user.id, 'added', newItem.trim())
     setNewItem('')
     setNewItemNote('')
+    setNewItemDate('')
+    setNewItemTime('')
+    setNewItemLocation('')
+    setShowItemDetails(false)
     const updated = await getSharedItems(activeHH.id)
     setItems(updated)
   }
 
   const handleToggle = async (id: string, checked: boolean) => {
+    const item = items.find(i => i.id === id)
     await toggleSharedItem(id, !checked)
     setItems(prev => prev.map(i => i.id === id ? { ...i, checked: !checked } : i))
+    if (activeHH?.id && user?.id && item) {
+      await logActivity(activeHH.id, user.id, checked ? 'unchecked' : 'checked off', item.text)
+    }
   }
 
   const handleRemove = async (id: string) => {
     if (!confirm('Remove this item?')) return
+    const item = items.find(i => i.id === id)
     await removeSharedItem(id)
     setItems(prev => prev.filter(i => i.id !== id))
+    if (activeHH?.id && user?.id && item) {
+      await logActivity(activeHH.id, user.id, 'removed', item.text)
+    }
   }
 
   const handleSaveNote = async (id: string) => {
@@ -132,7 +208,7 @@ export function SharedListView({ onClose, state }: Props) {
     if (!user?.id) return
     if (!confirm('Leave this list? You can rejoin with the share code later.')) return
     await leaveHousehold(user.id, hhId)
-    if (activeHH?.id === hhId) { setActiveHH(null); setItems([]) }
+    if (activeHH?.id === hhId) { setActiveHH(null); setItems([]); sessionStorage.removeItem("lp-active-list") }
     loadHouseholds()
     toast.success('Left list')
   }
@@ -173,7 +249,7 @@ export function SharedListView({ onClose, state }: Props) {
             {[
               { icon: '🛒', title: 'Real-time shared shopping lists', desc: 'Add items from anywhere — your family sees them instantly. No more duplicate purchases or forgotten items.' },
               { icon: '🎉', title: 'Event & trip planning', desc: 'Coordinate birthdays, vacations, and gatherings with everyone on the same page.' },
-              { icon: '🤖', title: 'AI-powered list building', desc: 'Ask LifePilot to find products, compare prices, and add them with links — straight to your shared list.' },
+              { icon: '🤖', title: 'AI-powered list building', desc: 'Ask Life Pilot AI to find products, compare prices, and add them with links — straight to your shared list.' },
               { icon: '📝', title: 'Notes on every item', desc: 'Add context like "the organic one" or "size medium" so nothing gets lost in translation.' },
               { icon: '🔗', title: 'Shoppable links', desc: 'Tap any item to shop it instantly on Amazon, Walmart, Target and more.' },
               { icon: '👥', title: 'Unlimited lists, unlimited members', desc: 'Family groceries, friend group trips, roommate chores — create as many lists as your life needs.' },
@@ -218,7 +294,7 @@ export function SharedListView({ onClose, state }: Props) {
     return (
       <div className="min-h-[100dvh] max-w-lg mx-auto bg-[#FAF9F6]">
         <header className="flex items-center gap-3 px-4 py-3 border-b border-stone-200">
-          <button onClick={() => { setActiveHH(null); setItems([]) }} className="w-9 h-9 rounded-xl hover:bg-stone-100 flex items-center justify-center">
+          <button onClick={() => { setActiveHH(null); setItems([]); sessionStorage.removeItem("lp-active-list") }} className="w-9 h-9 rounded-xl hover:bg-stone-100 flex items-center justify-center">
             <ArrowLeft className="w-5 h-5 text-stone-700" />
           </button>
           <div className="flex-1">
@@ -233,21 +309,43 @@ export function SharedListView({ onClose, state }: Props) {
 
         <div className="p-4 space-y-3">
           {/* Add item */}
-          <div className="space-y-2">
+          <div className="bg-white rounded-2xl border border-stone-100 p-3 shadow-sm space-y-2">
             <div className="flex gap-2">
               <input value={newItem} onChange={e => setNewItem(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleAddItem()}
                 placeholder="Add to list..."
-                className="flex-1 px-4 py-3 rounded-xl border border-stone-200 text-base text-stone-800 placeholder:text-stone-400" />
+                className="flex-1 px-4 py-3 rounded-xl border border-stone-200 text-base text-stone-800 placeholder:text-stone-400 bg-stone-50/50" />
               <button onClick={handleAddItem} disabled={!newItem.trim()}
-                className="px-4 py-3 rounded-xl bg-lime-500 text-white disabled:opacity-40">
+                className="px-4 py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-40 transition-colors">
                 <Plus className="w-5 h-5" />
               </button>
             </div>
             {newItem.trim() && (
-              <input value={newItemNote} onChange={e => setNewItemNote(e.target.value)}
-                placeholder="Add a note (optional)..."
-                className="w-full px-4 py-2 rounded-xl border border-stone-100 text-sm text-stone-700 placeholder:text-stone-400 bg-stone-50" />
+              <>
+                <button onClick={() => setShowItemDetails(!showItemDetails)}
+                  className="text-xs text-amber-600 hover:text-amber-700 font-medium px-1">
+                  {showItemDetails ? '− Less details' : '+ Add date, time, location, note'}
+                </button>
+                {showItemDetails && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <input value={newItemDate} onChange={e => setNewItemDate(e.target.value)} type="date"
+                      className="px-3 py-2 rounded-lg border border-stone-200 text-sm text-stone-700 bg-stone-50" />
+                    <input value={newItemTime} onChange={e => setNewItemTime(e.target.value)} type="time"
+                      className="px-3 py-2 rounded-lg border border-stone-200 text-sm text-stone-700 bg-stone-50" />
+                    <input value={newItemLocation} onChange={e => setNewItemLocation(e.target.value)}
+                      placeholder="📍 Location (optional)"
+                      className="col-span-2 px-3 py-2 rounded-lg border border-stone-200 text-sm text-stone-700 placeholder:text-stone-400 bg-stone-50" />
+                    <input value={newItemNote} onChange={e => setNewItemNote(e.target.value)}
+                      placeholder="📝 Note (optional)"
+                      className="col-span-2 px-3 py-2 rounded-lg border border-stone-200 text-sm text-stone-700 placeholder:text-stone-400 bg-stone-50" />
+                  </div>
+                )}
+                {!showItemDetails && (
+                  <input value={newItemNote} onChange={e => setNewItemNote(e.target.value)}
+                    placeholder="Quick note (optional)..."
+                    className="w-full px-3 py-2 rounded-lg border border-stone-100 text-sm text-stone-700 placeholder:text-stone-400 bg-stone-50/50" />
+                )}
+              </>
             )}
           </div>
 
@@ -279,8 +377,19 @@ export function SharedListView({ onClose, state }: Props) {
                       ) : (
                         <>
                           <span className="text-base text-stone-800 font-medium">{item.text}</span>
+                          {/* Notes with date/time/location metadata */}
+                          {item.notes && (
+                            <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md inline-block">
+                              {item.notes}
+                            </span>
+                          )}
+                          {/* Attribution line */}
+                          <span className="text-xs text-stone-400">
+                            {nameMap[item.added_by] ? `${nameMap[item.added_by]}` : ''}
+                            {item.created_at ? ` · ${new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
+                          </span>
                           {hasLink && (
-                            <a href={item.link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-sm text-blue-600 mt-0.5 hover:underline">
+                            <a href={item.link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
                               <LinkIcon className="w-3 h-3" /> Open link
                             </a>
                           )}
@@ -288,13 +397,17 @@ export function SharedListView({ onClose, state }: Props) {
                       )}
                     </div>
                     <div className="flex items-center gap-1 flex-none">
-                      {/* Shop button: show for non-link items */}
-                      {!hasLink && !item.checked && (
-                        <a href={shopSearchUrl(item.text)} target="_blank" rel="noopener noreferrer"
-                          className="p-1.5 rounded-lg text-emerald-500 hover:bg-emerald-50" title="Shop this item">
-                          <ExternalLink className="w-4 h-4" />
-                        </a>
-                      )}
+                      {/* Smart contextual link: shops, hotels, flights, maps, etc. */}
+                      {!hasLink && !item.checked && (() => {
+                        const smart = getSmartLink(item.text, activeHH?.name || '')
+                        return (
+                          <a href={smart.url} target="_blank" rel="noopener noreferrer"
+                            className="p-1.5 rounded-lg text-emerald-500 hover:bg-emerald-50 flex items-center gap-1" title={smart.label}>
+                            <ExternalLink className="w-4 h-4" />
+                            <span className="text-xs hidden sm:inline">{smart.label}</span>
+                          </a>
+                        )
+                      })()}
                       <button onClick={() => { setEditingItem(item.id!); setEditText(item.text) }}
                         className="p-1.5 rounded-lg text-stone-300 hover:text-stone-600 hover:bg-stone-50">
                         <Pencil className="w-3.5 h-3.5" />
@@ -341,13 +454,115 @@ export function SharedListView({ onClose, state }: Props) {
             </>
           )}
 
-          {/* Household actions */}
-          <div className="bg-white rounded-xl border border-stone-100 p-4 mt-4 shadow-sm">
-            <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">List info</p>
-            <p className="text-sm text-stone-700 mb-1">Share code: <span className="font-mono font-bold text-stone-800">{activeHH.shareCode}</span></p>
-            <p className="text-sm text-stone-600 mb-3">{activeHH.memberCount} member{activeHH.memberCount > 1 ? 's' : ''} connected</p>
-            <button onClick={() => handleLeave(activeHH.id)} className="flex items-center gap-1.5 text-sm text-red-500 hover:text-red-600 font-medium">
-              <LogOut className="w-3.5 h-3.5" /> Leave this list
+          {/* List Management Panel */}
+          <div className="mt-6 space-y-3">
+            {/* Quick actions row */}
+            <div className="flex gap-2">
+              <button onClick={() => {
+                const checked = items.filter(i => i.checked)
+                if (checked.length === 0) { toast('No completed items to clear'); return }
+                if (!confirm(`Remove ${checked.length} completed item${checked.length > 1 ? 's' : ''}?`)) return
+                checked.forEach(i => { removeSharedItem(i.id!); if (activeHH?.id && user?.id) logActivity(activeHH.id, user.id, 'cleared completed', i.text) })
+                setItems(prev => prev.filter(i => !i.checked))
+                toast.success(`${checked.length} completed items cleared`)
+              }} className="flex-1 py-2.5 rounded-xl bg-stone-50 text-stone-600 text-xs font-medium text-center hover:bg-stone-100">
+                Clear completed ({items.filter(i => i.checked).length})
+              </button>
+              <button onClick={() => {
+                const code = activeHH.shareCode
+                navigator.clipboard?.writeText(`Join my LifePilot list "${activeHH.name}"! Code: ${code}\nGet the app: https://getlifepilot.app`).then(() => toast.success('Invite copied!'))
+              }} className="flex-1 py-2.5 rounded-xl bg-amber-50 text-amber-700 text-xs font-medium text-center hover:bg-amber-100">
+                Share invite link
+              </button>
+            </div>
+
+            {/* Share code */}
+            <div className="bg-white rounded-xl border border-stone-100 p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Share Code</p>
+                <button onClick={() => copyCode(activeHH.shareCode)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-50 hover:bg-stone-100 text-xs text-stone-700 font-medium">
+                  {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                  {copied ? 'Copied!' : activeHH.shareCode}
+                </button>
+              </div>
+            
+              {/* Rename */}
+              {renamingList ? (
+                <div className="flex gap-2 mb-3">
+                  <input value={renameText} onChange={e => setRenameText(e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-lg border border-stone-200 text-sm text-stone-800" autoFocus />
+                  <button onClick={async () => {
+                    if (renameText.trim() && activeHH) {
+                      await renameHousehold(activeHH.id, renameText.trim())
+                      setActiveHH({ ...activeHH, name: renameText.trim() })
+                      loadHouseholds()
+                    }
+                    setRenamingList(false)
+                  }} className="px-3 py-2 rounded-lg bg-amber-500 text-white text-xs font-medium">Save</button>
+                  <button onClick={() => setRenamingList(false)} className="px-2 text-stone-400">✕</button>
+                </div>
+              ) : (
+                <button onClick={() => { setRenamingList(true); setRenameText(activeHH.name) }}
+                  className="flex items-center gap-1.5 text-xs text-stone-500 hover:text-amber-600 mb-3">
+                  <Pencil className="w-3 h-3" /> Rename list
+                </button>
+              )}
+
+              {/* Members */}
+              <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">
+                Members ({members.length})
+              </p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {members.map(m => (
+                  <div key={m.user_id} className="flex items-center gap-1.5 bg-stone-50 rounded-full px-3 py-1.5">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${m.role === 'owner' ? 'bg-amber-200 text-amber-800' : 'bg-stone-200 text-stone-600'}`}>
+                      {(m.name || '?').charAt(0).toUpperCase()}
+                    </div>
+                    <span className="text-xs text-stone-700 font-medium">{m.name || 'Unknown'}</span>
+                    {m.role === 'owner' && <Crown className="w-3 h-3 text-amber-500" />}
+                  </div>
+                ))}
+              </div>
+
+              {/* Activity log */}
+              <button onClick={async () => {
+                if (!showLog && activeHH) {
+                  const log = await getActivityLog(activeHH.id)
+                  setActivityLog(log)
+                  const userIds = [...new Set(log.map(l => l.user_id))]
+                  const names = { ...nameMap }
+                  for (const uid of userIds) { if (!names[uid]) names[uid] = await getUserDisplayName(uid) }
+                  setNameMap(names)
+                }
+                setShowLog(!showLog)
+              }} className="flex items-center gap-1.5 text-xs text-stone-500 hover:text-amber-600 font-medium">
+                <History className="w-3.5 h-3.5" /> {showLog ? 'Hide activity' : 'Activity log'}
+              </button>
+
+              {showLog && (
+                <div className="mt-2 space-y-1 max-h-40 overflow-y-auto border-t border-stone-50 pt-2">
+                  {activityLog.length === 0 ? (
+                    <p className="text-xs text-stone-400 italic">No activity yet</p>
+                  ) : activityLog.map(entry => (
+                    <div key={entry.id} className="flex items-start gap-2 text-xs text-stone-500 py-1">
+                      <Clock className="w-3 h-3 flex-none mt-0.5 text-stone-300" />
+                      <span>
+                        <span className="font-medium text-stone-700">{nameMap[entry.user_id] || 'Someone'}</span>
+                        {' '}{entry.action}{' '}
+                        {entry.item_text && <span className="text-stone-600">"{entry.item_text}"</span>}
+                        <span className="text-stone-300 ml-1">{new Date(entry.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Danger zone */}
+            <button onClick={() => handleLeave(activeHH.id)} 
+              className="w-full py-2.5 rounded-xl border border-red-100 text-red-400 text-xs font-medium text-center hover:bg-red-50 hover:text-red-600">
+              Leave this list
             </button>
           </div>
         </div>

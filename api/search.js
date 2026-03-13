@@ -1,5 +1,10 @@
 // Web Search API using Serper.dev (Google search results)
 
+// Simple in-memory rate limit (resets on cold start, which is fine for Vercel)
+const rateLimitMap = new Map();
+const RATE_LIMIT = 30; // max 30 searches per IP per hour
+const RATE_WINDOW = 3600000;
+
 export default async function handler(req, res) {
   const origin = req.headers.origin || '';
   const allowedOrigins = ['https://getlifepilot.app', 'http://localhost:5173', 'http://localhost:4173'];
@@ -11,6 +16,17 @@ export default async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // Rate limiting
+  const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || 'unknown';
+  const now = Date.now();
+  const bucket = rateLimitMap.get(clientIp) || { count: 0, resetAt: now + RATE_WINDOW };
+  if (now > bucket.resetAt) { bucket.count = 0; bucket.resetAt = now + RATE_WINDOW; }
+  bucket.count++;
+  rateLimitMap.set(clientIp, bucket);
+  if (bucket.count > RATE_LIMIT) {
+    return res.status(429).json({ error: 'Too many searches. Please try again later.' });
+  }
 
   const apiKey = process.env.SERPER_API_KEY;
   if (!apiKey) {
