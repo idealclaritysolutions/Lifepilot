@@ -138,6 +138,20 @@ export function AccountView({ onClose }: Props) {
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-white border border-stone-200 text-stone-700 text-sm font-medium hover:bg-stone-50">
             <LogOut className="w-4 h-4" /> Sign out
           </button>
+
+          <button onClick={async () => {
+            if (!confirm('Delete your account and all cloud data? This cannot be undone. Your local data will remain on this device.')) return
+            if (!confirm('Are you absolutely sure? All your synced data will be permanently deleted.')) return
+            try {
+              const { deleteUserData } = await import('@/lib/supabase')
+              await deleteUserData(user!.id)
+              await signOut()
+              toast.success('Account data deleted.')
+            } catch { toast.error('Failed to delete. Try again.') }
+          }}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs text-red-400 hover:text-red-600">
+            Delete my account and data
+          </button>
         </div>
       </div>
     )
@@ -267,7 +281,7 @@ export function AccountView({ onClose }: Props) {
         </div>
 
         <p className="text-xs text-stone-500 text-center">
-          You can keep using LifePilot without an account. Your data stays on this device.
+          You can keep using Life Pilot AI without an account. Your data stays on this device.
         </p>
       </div>
     </div>

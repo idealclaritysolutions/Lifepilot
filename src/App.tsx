@@ -8,6 +8,7 @@ import { IOSInstallPrompt } from '@/components/IOSInstallPrompt'
 import { useNotifications } from '@/hooks/use-notifications'
 import { useLocation, type UserLocation } from '@/hooks/use-location'
 import { useDailyNudges } from '@/hooks/use-daily-nudges'
+import { usePushSubscribe } from '@/hooks/use-push-subscribe'
 import { saveUserData, loadUserData } from '@/lib/supabase'
 
 export interface LifeItem {
@@ -46,6 +47,7 @@ export interface JournalEntry {
   createdAt: string
   aiReflection?: string
   themes?: string[]
+  summary?: string[]  // AI-generated bullet point summary
 }
 
 // ─── SUBSCRIPTION SYSTEM ──────────────────────────────────────────
@@ -59,11 +61,14 @@ export interface Subscription {
   promoCode?: string
 }
 
-export const TIER_LIMITS: Record<SubscriptionTier, { messagesPerDay: number; journalPerMonth: number; maxPeople: number }> = {
-  free: { messagesPerDay: 10, journalPerMonth: 5, maxPeople: 3 },
-  pro: { messagesPerDay: Infinity, journalPerMonth: Infinity, maxPeople: Infinity },
-  premium: { messagesPerDay: Infinity, journalPerMonth: Infinity, maxPeople: Infinity },
-  enterprise: { messagesPerDay: Infinity, journalPerMonth: Infinity, maxPeople: Infinity },
+export const TIER_LIMITS: Record<SubscriptionTier, {
+  messagesPerDay: number; journalPerMonth: number; maxPeople: number;
+  searchesPerDay: number; maxLists: number; maxHabits: number;
+}> = {
+  free: { messagesPerDay: 10, journalPerMonth: 5, maxPeople: 3, searchesPerDay: 0, maxLists: 0, maxHabits: 0 },
+  pro: { messagesPerDay: 40, journalPerMonth: 20, maxPeople: 15, searchesPerDay: 5, maxLists: 0, maxHabits: 0 },
+  premium: { messagesPerDay: 100, journalPerMonth: 999, maxPeople: 50, searchesPerDay: 20, maxLists: 10, maxHabits: 15 },
+  enterprise: { messagesPerDay: 300, journalPerMonth: 999, maxPeople: 999, searchesPerDay: 75, maxLists: 999, maxHabits: 50 },
 }
 
 // Feature access by tier
@@ -95,7 +100,7 @@ export const PROMO_CODES: Record<string, { tier: SubscriptionTier; durationDays:
   'FOUNDING100': { tier: 'premium', durationDays: null, label: 'Founding Member — Inner Circle forever' },
   'LIFEPILOT2026': { tier: 'premium', durationDays: null, label: 'Founding Member — Inner Circle forever' },
   'BETA2026': { tier: 'premium', durationDays: 90, label: 'Beta Tester — Inner Circle for 90 days' },
-  'FRIEND50': { tier: 'premium', durationDays: 60, label: 'Friend of LifePilot — Inner Circle for 60 days' },
+  'FRIEND50': { tier: 'premium', durationDays: 60, label: 'Friend of Life Pilot AI — Inner Circle for 60 days' },
   'LAUNCH30': { tier: 'premium', durationDays: 30, label: 'Launch Special — Inner Circle for 30 days' },
 }
 
@@ -216,13 +221,43 @@ function App() {
     const syncCloud = async () => {
       console.log('[LifePilot] Syncing cloud data for:', authUser.id)
       const cloudData = await loadUserData(authUser.id)
+      const localData = loadState()
+      
       if (cloudData && cloudData.profile?.onboarded) {
-        // Cloud data exists — use it as source of truth
-        console.log('[LifePilot] Cloud data found, loading to device')
-        setState(prev => ({ ...DEFAULT_STATE, ...cloudData }))
+        // Cloud data exists — merge local offline changes
+        const cloudTime = new Date(cloudData.lastSyncedAt || 0).getTime()
+        const localTime = new Date(localData.lastSyncedAt || 0).getTime()
+        
+        if (localTime > cloudTime && localData.profile?.onboarded) {
+          // Local is newer (user made changes while signed out) — merge
+          console.log('[LifePilot] Local data is newer, merging with cloud')
+          // Merge: keep unique items from both, prefer local for conflicts
+          const mergedItems = [...(cloudData.items || [])];
+          (localData.items || []).forEach((li: any) => { if (!mergedItems.some((ci: any) => ci.id === li.id)) mergedItems.push(li) })
+          const mergedJournal = [...(cloudData.journal || [])];
+          (localData.journal || []).forEach((lj: any) => { if (!mergedJournal.some((cj: any) => cj.id === lj.id)) mergedJournal.push(lj) })
+          const mergedPeople = [...(cloudData.people || [])];
+          (localData.people || []).forEach((lp: any) => { if (!mergedPeople.some((cp: any) => cp.id === lp.id)) mergedPeople.push(lp) })
+          const mergedHabits = [...(cloudData.habits || [])];
+          (localData.habits || []).forEach((lh: any) => { if (!mergedHabits.some((ch: any) => ch.id === lh.id)) mergedHabits.push(lh) })
+          
+          const merged = {
+            ...cloudData,
+            items: mergedItems,
+            journal: mergedJournal.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+            people: mergedPeople,
+            habits: mergedHabits,
+            chatHistory: [...(cloudData.chatHistory || []), ...(localData.chatHistory || [])].slice(-100),
+          }
+          setState(prev => ({ ...DEFAULT_STATE, ...merged }))
+          await saveUserData(authUser.id, { ...merged, lastSyncedAt: new Date().toISOString() })
+        } else {
+          // Cloud is newer or same — use cloud
+          console.log('[LifePilot] Cloud data is current, loading to device')
+          setState(prev => ({ ...DEFAULT_STATE, ...cloudData }))
+        }
       } else {
         // No cloud data — upload local data if user has any
-        const localData = loadState()
         if (localData.profile?.onboarded) {
           console.log('[LifePilot] No cloud data, uploading local data')
           await saveUserData(authUser.id, { ...localData, chatHistory: (localData.chatHistory || []).slice(-100) })
@@ -235,6 +270,28 @@ function App() {
     syncCloud()
   }, [authLoaded, isSignedIn, authUser?.id])
   useDailyNudges(state)
+  usePushSubscribe(!!state.profile.notificationsEnabled)
+
+  // Re-sync from cloud when app becomes visible (handles multi-device)
+  useEffect(() => {
+    if (!isSignedIn || !authUser?.id) return
+    const handleVisibility = async () => {
+      if (document.visibilityState === 'visible') {
+        const cloudData = await loadUserData(authUser.id)
+        if (cloudData && cloudData.profile?.onboarded) {
+          // Compare timestamps — only update if cloud is newer
+          const cloudTime = new Date(cloudData.lastSyncedAt || 0).getTime()
+          const localTime = new Date(state.lastSyncedAt || 0).getTime()
+          if (cloudTime > localTime) {
+            console.log('[LifePilot] Cloud data is newer, syncing to device')
+            setState(prev => ({ ...DEFAULT_STATE, ...cloudData }))
+          }
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [isSignedIn, authUser?.id])
 
   const syncTimerRef = useRef<any>(null)
 
@@ -244,6 +301,7 @@ function App() {
       const toSave = {
         ...state,
         chatHistory: state.chatHistory.slice(-100),
+        lastSyncedAt: new Date().toISOString(),
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
 
@@ -296,7 +354,7 @@ function App() {
         }))
       // Build personalized welcome message based on their energy drainers
       const drainers = profile.priorities || []
-      let welcomeMsg = `Hey ${profile.name}! 🌟 Welcome to LifePilot — I'm so glad you're here.\n\n`
+      let welcomeMsg = `Hey ${profile.name}! 🌟 Welcome to Life Pilot AI — I'm so glad you're here.\n\n`
       
       if (drainers.length > 0) {
         welcomeMsg += `I noticed that ${drainers.join(', ').replace(/, ([^,]*)$/, ' and $1')} ${drainers.length === 1 ? 'drains' : 'drain'} your energy the most. I get it — `
@@ -501,6 +559,7 @@ function App() {
   return (
     <div className="min-h-[100dvh] bg-[#FAF9F6]">
       <Toaster position="top-center" richColors />
+      <OfflineIndicator />
       <IOSInstallPrompt />
       {/* While Clerk is loading, show a brief splash instead of flashing onboarding */}
       {/* Password recovery flow */}
@@ -545,6 +604,23 @@ function App() {
           onReset={handleReset}
         />
       )}
+    </div>
+  )
+}
+
+function OfflineIndicator() {
+  const [offline, setOffline] = useState(!navigator.onLine)
+  useEffect(() => {
+    const on = () => setOffline(false)
+    const off = () => setOffline(true)
+    window.addEventListener('online', on)
+    window.addEventListener('offline', off)
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
+  }, [])
+  if (!offline) return null
+  return (
+    <div className="fixed top-0 left-0 right-0 z-[9999] bg-stone-800 text-white text-center text-xs py-1.5 font-medium">
+      You're offline — changes will sync when you reconnect
     </div>
   )
 }
