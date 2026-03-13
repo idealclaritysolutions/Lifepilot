@@ -39,14 +39,14 @@ function PrivacyContent() {
   return (
     <>
       <p className="text-sm text-stone-600 leading-relaxed mb-6">
-        LifePilot ("we," "our," or "the app") is operated by Ideal Clarity Solutions. We take your privacy seriously. This policy explains what data we collect, how we use it, and your rights.
+        Life Pilot AI ("we," "our," or "the app") is operated by Ideal Clarity Solutions. We take your privacy seriously. This policy explains what data we collect, how we use it, and your rights.
       </p>
 
       <Section title="1. What Data We Collect">
-        <p>When you use LifePilot, you may provide the following information:</p>
+        <p>When you use Life Pilot AI, you may provide the following information:</p>
         <p><strong>Account information:</strong> Your name, email address, and authentication credentials when you create an account.</p>
         <p><strong>Journal entries:</strong> Text and voice transcriptions you write in the Journal tab, including mood selections and any themes detected.</p>
-        <p><strong>Chat messages:</strong> Conversations you have with the LifePilot AI assistant.</p>
+        <p><strong>Chat messages:</strong> Conversations you have with the Life Pilot AI assistant.</p>
         <p><strong>Life board items:</strong> Tasks, reminders, and to-do items you create or that the AI creates on your behalf.</p>
         <p><strong>People & events:</strong> Names, relationships, birthdays, anniversaries, and notes about people you add to the People tab.</p>
         <p><strong>Habits:</strong> Habit names and completion records.</p>
@@ -62,7 +62,7 @@ function PrivacyContent() {
       </Section>
 
       <Section title="3. How We Use Your Data">
-        <p>We use your data exclusively to provide and improve the LifePilot service:</p>
+        <p>We use your data exclusively to provide and improve the Life Pilot AI service:</p>
         <p>• To generate AI responses tailored to your life context</p>
         <p>• To detect journal themes and provide coaching reflections</p>
         <p>• To send you push notifications about tasks, reminders, and events</p>
@@ -92,11 +92,11 @@ function PrivacyContent() {
       </Section>
 
       <Section title="7. Children's Privacy">
-        <p>LifePilot is not intended for children under 13 (or under 16 in the EU). We do not knowingly collect data from children. If you believe a child has provided us with personal information, please contact us and we will delete it.</p>
+        <p>Life Pilot AI is not intended for children under 13 (or under 16 in the EU). We do not knowingly collect data from children. If you believe a child has provided us with personal information, please contact us and we will delete it.</p>
       </Section>
 
       <Section title="8. Changes to This Policy">
-        <p>We may update this policy from time to time. We will notify you of significant changes through the app. Continued use of LifePilot after changes constitutes acceptance of the updated policy.</p>
+        <p>We may update this policy from time to time. We will notify you of significant changes through the app. Continued use of Life Pilot AI after changes constitutes acceptance of the updated policy.</p>
       </Section>
 
       <Section title="9. Contact Us">
@@ -111,33 +111,33 @@ function TermsContent() {
   return (
     <>
       <p className="text-sm text-stone-600 leading-relaxed mb-6">
-        These Terms of Service ("Terms") govern your use of LifePilot, operated by Ideal Clarity Solutions. By using LifePilot, you agree to these Terms.
+        These Terms of Service ("Terms") govern your use of Life Pilot AI, operated by Ideal Clarity Solutions. By using Life Pilot AI, you agree to these Terms.
       </p>
 
       <Section title="1. The Service">
-        <p>LifePilot is an AI-powered life management application that provides task management, journaling, habit tracking, people management, and AI-assisted conversation. The service is provided "as is" and "as available."</p>
+        <p>Life Pilot AI is an AI-powered life management application that provides task management, journaling, habit tracking, people management, and AI-assisted conversation. The service is provided "as is" and "as available."</p>
       </Section>
 
       <Section title="2. Eligibility">
-        <p>You must be at least 13 years old (or 16 in the EU) to use LifePilot. By using the app, you represent that you meet this age requirement.</p>
+        <p>You must be at least 13 years old (or 16 in the EU) to use Life Pilot AI. By using the app, you represent that you meet this age requirement.</p>
       </Section>
 
       <Section title="3. Accounts & Subscriptions">
-        <p><strong>Free tier:</strong> LifePilot offers a free tier with limited features (10 AI messages/day, 5 journal entries/month, 3 people).</p>
+        <p><strong>Free tier:</strong> Life Pilot AI offers a free tier with limited features (10 AI messages/day, 5 journal entries/month, 3 people).</p>
         <p><strong>Paid tiers:</strong> Life Pilot ($9.99/month), Inner Circle ($19.99/month), and Guided ($79.99/month) offer additional features as described on the pricing page.</p>
         <p><strong>Promo codes:</strong> Promotional codes may be offered at our discretion and can be revoked or modified at any time.</p>
         <p><strong>Billing:</strong> Paid subscriptions are billed monthly or annually through Stripe. You may cancel at any time. Cancellation takes effect at the end of the current billing period. Refunds are handled on a case-by-case basis.</p>
       </Section>
 
       <Section title="4. AI Disclaimer">
-        <p><strong>LifePilot's AI is not a licensed therapist, doctor, lawyer, or financial advisor.</strong> The journal coaching, task suggestions, and conversational responses are generated by artificial intelligence and should not be treated as professional medical, legal, financial, or therapeutic advice.</p>
+        <p><strong>Life Pilot AI's AI assistant is not a licensed therapist, doctor, lawyer, or financial advisor.</strong> The journal coaching, task suggestions, and conversational responses are generated by artificial intelligence and should not be treated as professional medical, legal, financial, or therapeutic advice.</p>
         <p>If you are experiencing a mental health crisis, please contact the 988 Suicide & Crisis Lifeline (call or text 988) or your local emergency services.</p>
         <p>AI responses may occasionally be inaccurate, incomplete, or inappropriate. Use your own judgment when acting on AI suggestions.</p>
       </Section>
 
       <Section title="5. Your Content">
-        <p>You retain ownership of all content you create in LifePilot (journal entries, tasks, notes, etc.). We do not claim any ownership rights over your content.</p>
-        <p>You grant us a limited license to process your content solely for the purpose of providing the LifePilot service (e.g., sending your messages to the AI for processing, detecting journal themes).</p>
+        <p>You retain ownership of all content you create in Life Pilot AI (journal entries, tasks, notes, etc.). We do not claim any ownership rights over your content.</p>
+        <p>You grant us a limited license to process your content solely for the purpose of providing the Life Pilot AI service (e.g., sending your messages to the AI for processing, detecting journal themes).</p>
       </Section>
 
       <Section title="6. Acceptable Use">
@@ -150,11 +150,11 @@ function TermsContent() {
       </Section>
 
       <Section title="7. Data & Privacy">
-        <p>Your use of LifePilot is also governed by our Privacy Policy. By using the service, you consent to the data practices described therein.</p>
+        <p>Your use of Life Pilot AI is also governed by our Privacy Policy. By using the service, you consent to the data practices described therein.</p>
       </Section>
 
       <Section title="8. Limitation of Liability">
-        <p>To the maximum extent permitted by law, Ideal Clarity Solutions shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including but not limited to loss of data, loss of profits, or personal injury arising from your use of LifePilot.</p>
+        <p>To the maximum extent permitted by law, Ideal Clarity Solutions shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including but not limited to loss of data, loss of profits, or personal injury arising from your use of Life Pilot AI.</p>
         <p>We are not responsible for data loss resulting from device failure, browser data clearing, or any other cause outside our direct control. We strongly recommend maintaining your own backups of important information.</p>
       </Section>
 
@@ -163,7 +163,7 @@ function TermsContent() {
       </Section>
 
       <Section title="10. Changes to Terms">
-        <p>We may update these Terms from time to time. Continued use of LifePilot after changes constitutes acceptance. For material changes, we will provide notice through the app.</p>
+        <p>We may update these Terms from time to time. Continued use of Life Pilot AI after changes constitutes acceptance. For material changes, we will provide notice through the app.</p>
       </Section>
 
       <Section title="11. Governing Law">

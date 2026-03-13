@@ -134,7 +134,7 @@ export function PeopleView({ state, addPerson, updatePerson, removePerson }: Pro
             Your people, remembered
           </h3>
           <p className="text-sm text-stone-600 max-w-xs mx-auto">
-            Add the people who matter to you. LifePilot will remind you of their birthdays, anniversaries, and special moments — so you never miss one.
+            Add the people who matter to you. Life Pilot AI will remind you of their birthdays, anniversaries, and special moments — so you never miss one.
           </p>
           <p className="text-xs text-stone-600 mt-3">
             Or just tell me in chat: "My mom's birthday is March 15"

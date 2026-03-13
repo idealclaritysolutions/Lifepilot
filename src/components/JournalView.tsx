@@ -50,6 +50,9 @@ const THEME_DEFS: { id: string; label: string; emoji: string; color: string; pat
   { id: 'leadership', label: 'Leadership', emoji: '👑', color: 'bg-violet-50 text-violet-700', patterns: /led |lead(ing)?|delegat|decision.mak|took charge|step(ped)? up|manage(d)? .{0,5}team|organiz|direct(ed|ing)|own(ed|ing) the|accountab|responsib|initiative/i },
   { id: 'fear', label: 'Fear & Doubt', emoji: '🌫️', color: 'bg-slate-50 text-slate-700', patterns: /afraid|fear|doubt|uncertain|worry|worries|nervous|imposter|not good enough|scared|hesitat|second.guess|what if|anxious about|dread|paralyz/i },
   { id: 'joy', label: 'Joy & Happiness', emoji: '✨', color: 'bg-pink-50 text-pink-700', patterns: /happy|joy(ful)?|excit|wonderful|amazing|fantastic|love(d)? (it|this|that|today)|laugh|fun |delight|bliss|thrilled|elated|best day|great day|so good|incredible|blessed/i },
+  { id: 'faith', label: 'Faith & Spirituality', emoji: '🕊️', color: 'bg-sky-50 text-sky-700', patterns: /faith|pray|prayer|god|church|worship|spirit(ual)?|bible|scripture|believ(e|ing) in|trust(ing)? (god|the lord|him)|sermon|devotion|bless(ed|ing)|miracle|grace|amen|soul|divine|meditat(e|ion)|thankful to god|higher power|purpose/i },
+  { id: 'family', label: 'Family', emoji: '👨‍👩‍👧‍👦', color: 'bg-amber-50 text-amber-700', patterns: /family|mom|dad|mother|father|parent|brother|sister|sibling|son |daughter|child|children|kid(s)?|grandma|grandpa|grandparent|uncle|aunt|cousin|nephew|niece|household|home life|family time|dinner together|game night/i },
+  { id: 'love', label: 'Love & Romance', emoji: '💕', color: 'bg-rose-50 text-rose-600', patterns: /love (you|her|him|my|them)|in love|romantic|romance|dating|date night|relationship|partner|soulmate|heart|affection|intimacy|miss (you|her|him)|valentine|anniversary|wedding|engagement|crush|attracted|chemistry|spark|together forever/i },
 ]
 
 export function extractThemes(text: string): string[] {
@@ -71,6 +74,46 @@ function getThemeConfig(id: string) {
 }
 
 // ─── AI REFLECTIONS ─────────────────────────────────────────────────
+
+// Generate bullet point summary of journal entry
+// Quick client-side summary (instant, shown immediately)
+function quickSummary(content: string): string[] {
+  if (content.length < 80) return ['Brief reflection captured.']
+  return ['Generating AI summary...']
+}
+
+// AI-powered summary via API (called async after save)
+async function generateAISummary(content: string): Promise<string[]> {
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: `Summarize this journal entry into 2-5 concise, insightful bullet points. Each bullet should capture a key insight, emotion, decision, or event — not just repeat what was said. Be perceptive. Write in third person present tense as if observing the person's inner world. Keep each bullet under 20 words. Return ONLY the bullet points, one per line, starting each with "•". No preamble.\n\nJournal entry:\n${content}` }],
+        system: 'You are a perceptive journal analyst. Distill entries into sharp, insightful bullet points that reveal what the person is really feeling, deciding, or experiencing. Never repeat their words verbatim — interpret and synthesize.',
+      }),
+    })
+    const data = await res.json()
+    // Anthropic API returns { content: [{ type: 'text', text: '...' }] }
+    let text = ''
+    if (data.content && Array.isArray(data.content)) {
+      text = data.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
+    } else if (typeof data.response === 'string') {
+      text = data.response
+    } else if (typeof data.message === 'string') {
+      text = data.message
+    }
+    if (!text) return ['Entry captured.']
+    const bullets = text.split('\n').map((l: string) => l.replace(/^[•\-\*\d+\.]\s*/, '').trim()).filter((l: string) => l.length > 10)
+    return bullets.length > 0 ? bullets.slice(0, 5) : ['Entry captured.']
+  } catch (err) {
+    console.error('[Journal] Summary error:', err)
+    return ['Entry captured.']
+  }
+}
+
+// Curated theme list for manual add
+const ALL_THEMES = THEME_DEFS.map(t => ({ id: t.id, label: t.label, emoji: t.emoji, color: t.color }))
 
 function getAIReflection(content: string, mood: JournalEntry['mood'], themes: string[]): string {
   // Use content hash to select variation so same content = same reflection, different content = different reflection
@@ -247,10 +290,25 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
     } catch {}
   }, [])
 
+  // Smart punctuation: capitalize after pauses, add periods at natural breaks
+  const addSmartPunctuation = (text: string): string => {
+    if (!text) return text
+    // Capitalize first letter
+    let result = text.charAt(0).toUpperCase() + text.slice(1)
+    // Add periods before common sentence starters if missing punctuation
+    result = result.replace(/([a-z]) (I |So |Then |But |And then |After |Also |However |Today |Tomorrow |Yesterday |This |That |My |We |They |He |She |It was |The )/g, '$1. $2')
+    // Capitalize after periods, exclamation, question marks
+    result = result.replace(/([.!?])\s+([a-z])/g, (_, p, c) => p + ' ' + c.toUpperCase())
+    // Add period at end if missing
+    if (result.length > 10 && !/[.!?]$/.test(result.trim())) result = result.trim() + '.'
+    return result
+  }
+
   const buildDisplayText = (interim: string = '') => {
     const parts = [textBeforeVoiceRef.current, ...finalSegmentsRef.current]
     if (interim) parts.push(interim)
-    return parts.join(' ').replace(/\s+/g, ' ').trim()
+    const raw = parts.join(' ').replace(/\s+/g, ' ').trim()
+    return addSmartPunctuation(raw)
   }
 
   const STOP_COMMANDS = ['stop recording and save', 'stop recording', 'done recording', "i'm done", 'save entry', 'stop and save']
@@ -297,7 +355,7 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
 
     const rec = new SR()
     const isAndroid = /android/i.test(navigator.userAgent)
-    rec.continuous = !isAndroid  // Android: false to prevent duplication
+    rec.continuous = !isAndroid  // Android: false prevents duplication. iOS: true for smooth recording.
     rec.interimResults = true
     rec.lang = 'en-US'
 
@@ -410,12 +468,19 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
       createdAt: new Date().toISOString(),
       aiReflection: reflection,
       themes,
+      summary: quickSummary(content),
     }
     addJournalEntry(entry)
     setJustSaved(entry)
     setContent('')
     setMood(undefined)
     setView('saved')
+    
+    // Fetch real AI summary in background
+    generateAISummary(content.trim()).then(aiSummary => {
+      updateJournalEntry(entry.id, { summary: aiSummary })
+      setJustSaved(prev => prev ? { ...prev, summary: aiSummary } : prev)
+    })
   }
 
   // ─── EDIT ───────────────────────────────────────────
@@ -434,7 +499,17 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
       content: content.trim(),
       mood,
       themes,
+      summary: quickSummary(content),
       aiReflection: reflection,
+    })
+    const editId = editingEntry.id
+    setContent('')
+    setMood(undefined)
+    setEditingEntry(null)
+    setView('home')
+    // Fetch AI summary in background
+    generateAISummary(content.trim()).then(aiSummary => {
+      updateJournalEntry(editId, { summary: aiSummary })
     })
     setContent('')
     setMood(undefined)
@@ -464,45 +539,80 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
   // ─── READ VIEW (tap to read full entry) ─────────────
   if (view === 'read' && readingEntry) {
     const themes = readingEntry.themes || extractThemes(readingEntry.content)
+    const summary = readingEntry.summary && readingEntry.summary[0] !== 'Generating AI summary...' ? readingEntry.summary : null
+    // Auto-generate summary for old entries that don't have one
+    if (!summary && readingEntry.content.length > 80) {
+      generateAISummary(readingEntry.content).then(aiSummary => {
+        updateJournalEntry(readingEntry.id, { summary: aiSummary })
+        setReadingEntry(prev => prev ? { ...prev, summary: aiSummary } : prev)
+      })
+    }
     return (
       <div className="px-4 py-4">
         <button onClick={() => { setView('home'); setReadingEntry(null) }}
           className="text-sm text-stone-600 mb-4">← Back to journal</button>
 
-        <div className="bg-white rounded-2xl border border-stone-100 p-5 shadow-sm mb-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              {readingEntry.mood && <span className="text-2xl">{MOODS.find(m => m.value === readingEntry.mood)?.emoji}</span>}
-              <span className="text-sm text-stone-500">
-                {new Date(readingEntry.createdAt).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
-              </span>
-            </div>
-          </div>
-          <p className="text-[15px] text-stone-800 leading-relaxed whitespace-pre-wrap">{readingEntry.content}</p>
+        {/* Date and mood header */}
+        <div className="flex items-center gap-2 mb-4">
+          {readingEntry.mood && <span className="text-2xl">{MOODS.find(m => m.value === readingEntry.mood)?.emoji}</span>}
+          <span className="text-sm text-stone-500">
+            {new Date(readingEntry.createdAt).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+          </span>
         </div>
 
-        {/* Themes */}
-        {themes.length > 0 && (
+        {/* AI Summary — shown first for quick scanning */}
+        {summary && summary.length > 0 && (
           <div className="mb-4">
-            <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">Themes</p>
-            <div className="flex flex-wrap gap-1.5">
-              {themes.map(t => {
-                const cfg = getThemeConfig(t)
-                return cfg ? <span key={t} className={`px-2.5 py-1 rounded-full text-xs font-medium ${cfg.color}`}>{cfg.emoji} {cfg.label}</span> : null
-              })}
+            <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">Summary</p>
+            <div className="bg-amber-50/50 rounded-xl border border-amber-100/50 p-4 space-y-2">
+              {summary.map((point, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <span className="text-amber-500 mt-0.5 text-xs">●</span>
+                  <p className="text-sm text-stone-700 leading-relaxed">{point}</p>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
+        {/* Editable Themes */}
+        <div className="mb-4">
+          <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">Themes <span className="normal-case font-normal text-stone-400">— tap to remove</span></p>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {themes.map(t => {
+              const cfg = getThemeConfig(t)
+              return cfg ? (
+                <button key={t} onClick={() => {
+                  const updated = themes.filter(th => th !== t)
+                  updateJournalEntry(readingEntry.id, { themes: updated })
+                  setReadingEntry({ ...readingEntry, themes: updated })
+                }} className={`px-2.5 py-1 rounded-full text-xs font-medium ${cfg.color} hover:opacity-70`}>
+                  {cfg.emoji} {cfg.label} ✕
+                </button>
+              ) : null
+            })}
+          </div>
+          <ThemeAdder currentThemes={themes} onAdd={(themeId) => {
+            const updated = [...themes, themeId]
+            updateJournalEntry(readingEntry.id, { themes: updated })
+            setReadingEntry({ ...readingEntry, themes: updated })
+          }} />
+        </div>
+
         {/* AI Reflection */}
         {readingEntry.aiReflection && (
-          <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl border border-indigo-100 p-5 mb-5">
-            <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-2">LifePilot's reflection</p>
+          <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl border border-indigo-100 p-5 mb-4">
+            <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-2">Reflection</p>
             <p className="text-sm text-indigo-800 leading-relaxed italic">"{readingEntry.aiReflection}"</p>
           </div>
         )}
 
-        {/* Action buttons */}
+        {/* Full entry — collapsible */}
+        <details className="bg-white rounded-2xl border border-stone-100 p-5 shadow-sm mb-4">
+          <summary className="text-xs font-semibold text-stone-500 uppercase tracking-wider cursor-pointer">Full Entry</summary>
+          <p className="text-[15px] text-stone-800 leading-relaxed whitespace-pre-wrap mt-3">{readingEntry.content}</p>
+        </details>
+
         <div className="flex gap-3">
           <button onClick={() => handleStartEdit(readingEntry)}
             className="flex-1 py-3 rounded-xl bg-stone-100 text-stone-600 text-sm font-medium flex items-center justify-center gap-2">
@@ -520,35 +630,72 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
   // ─── SAVED VIEW ──────────────────────────────────────
   if (view === 'saved' && justSaved) {
     const themes = justSaved.themes || extractThemes(justSaved.content)
+    const summary = justSaved.summary || generateSummary(justSaved.content)
     return (
       <div className="px-4 py-6">
-        <div className="text-center mb-6">
+        <div className="text-center mb-5">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center mx-auto mb-3">
             <Sparkles className="w-7 h-7 text-indigo-500" />
           </div>
           <h2 className="text-lg font-bold text-stone-800" style={{ fontFamily: "'Georgia', serif" }}>Entry saved</h2>
         </div>
-        {themes.length > 0 && (
+
+        {/* AI Summary */}
+        {summary && summary.length > 0 && (
           <div className="mb-4">
-            <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">Themes detected</p>
-            <div className="flex flex-wrap gap-1.5">
-              {themes.map(t => {
-                const cfg = getThemeConfig(t)
-                return cfg ? <span key={t} className={`px-2.5 py-1 rounded-full text-xs font-medium ${cfg.color}`}>{cfg.emoji} {cfg.label}</span> : null
-              })}
+            <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">Quick Summary</p>
+            <div className="bg-white rounded-xl border border-stone-100 p-4 shadow-sm space-y-2">
+              {summary.map((point, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <span className="text-amber-500 mt-0.5 text-xs">●</span>
+                  <p className="text-sm text-stone-700 leading-relaxed">{point}</p>
+                </div>
+              ))}
             </div>
           </div>
         )}
-        <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl border border-indigo-100 p-5 mb-6">
+
+        {/* Editable Themes */}
+        <div className="mb-4">
+          <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">Themes <span className="normal-case font-normal text-stone-400">— tap to remove, or add below</span></p>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {themes.map(t => {
+              const cfg = getThemeConfig(t)
+              return cfg ? (
+                <button key={t} onClick={() => {
+                  const updated = themes.filter(th => th !== t)
+                  updateJournalEntry(justSaved.id, { themes: updated })
+                  setJustSaved({ ...justSaved, themes: updated })
+                }} className={`px-2.5 py-1 rounded-full text-xs font-medium ${cfg.color} hover:opacity-70 transition-opacity`}>
+                  {cfg.emoji} {cfg.label} ✕
+                </button>
+              ) : null
+            })}
+          </div>
+          {/* Add theme picker */}
+          <ThemeAdder currentThemes={themes} onAdd={(themeId) => {
+            const updated = [...themes, themeId]
+            updateJournalEntry(justSaved.id, { themes: updated })
+            setJustSaved({ ...justSaved, themes: updated })
+          }} />
+        </div>
+
+        {/* AI Reflection */}
+        <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl border border-indigo-100 p-5 mb-5">
+          <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-2">Reflection</p>
           <p className="text-sm text-indigo-800 leading-relaxed italic">"{justSaved.aiReflection}"</p>
         </div>
-        <div className="bg-white rounded-xl border border-stone-100 p-4 shadow-sm mb-6">
-          <div className="flex items-center gap-2 mb-2">
+
+        {/* Original entry collapsed */}
+        <details className="bg-white rounded-xl border border-stone-100 p-4 shadow-sm mb-5">
+          <summary className="text-xs font-semibold text-stone-500 uppercase tracking-wider cursor-pointer">Full Entry</summary>
+          <div className="mt-3 flex items-center gap-2 mb-2">
             {justSaved.mood && <span className="text-lg">{MOODS.find(m => m.value === justSaved.mood)?.emoji}</span>}
             <span className="text-xs text-stone-600">{new Date(justSaved.createdAt).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
           </div>
           <p className="text-sm text-stone-700 leading-relaxed">{justSaved.content}</p>
-        </div>
+        </details>
+
         <div className="flex gap-3">
           <button onClick={() => { setContent(''); setView('write') }} className="flex-1 py-3 rounded-xl bg-indigo-600 text-white text-sm font-medium">Write another</button>
           <button onClick={() => setView('home')} className="flex-1 py-3 rounded-xl bg-stone-100 text-stone-600 text-sm font-medium">Back to journal</button>
@@ -795,6 +942,33 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
               </div>
             )
           })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── THEME ADDER COMPONENT ──────────────────────────────────────
+
+function ThemeAdder({ currentThemes, onAdd }: { currentThemes: string[]; onAdd: (id: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const available = ALL_THEMES.filter(t => !currentThemes.includes(t.id))
+  
+  if (available.length === 0) return null
+  
+  return (
+    <div>
+      <button onClick={() => setOpen(!open)} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">
+        {open ? '— Close' : '+ Add a theme'}
+      </button>
+      {open && (
+        <div className="flex flex-wrap gap-1.5 mt-2 max-h-32 overflow-y-auto">
+          {available.map(t => (
+            <button key={t.id} onClick={() => { onAdd(t.id); if (available.length <= 1) setOpen(false) }}
+              className={`px-2 py-0.5 rounded-full text-xs ${t.color} hover:ring-1 ring-current transition-all`}>
+              {t.emoji} {t.label}
+            </button>
+          ))}
         </div>
       )}
     </div>

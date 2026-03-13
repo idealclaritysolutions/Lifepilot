@@ -72,7 +72,7 @@ export function scheduleReminder(itemId: string, text: string, dueDate: string):
   if (msUntilDayBefore > 0 && msUntilDayBefore < 7 * 24 * 3600000) {
     const timer = window.setTimeout(() => {
       sendNotification(
-        '📋 LifePilot Reminder',
+        '📋 Life Pilot AI',
         `Tomorrow: ${text}`,
         `lifepilot-eve-${itemId}`
       )
@@ -83,7 +83,7 @@ export function scheduleReminder(itemId: string, text: string, dueDate: string):
   if (msUntilDueDay > 0 && msUntilDueDay < 7 * 24 * 3600000) {
     const timer = window.setTimeout(() => {
       sendNotification(
-        '⚡ LifePilot — Due Today!',
+        '⚡ Life Pilot AI — Due Today!',
         text,
         `lifepilot-due-${itemId}`
       )
@@ -98,64 +98,6 @@ export function scheduleReminder(itemId: string, text: string, dueDate: string):
       text,
       `lifepilot-soon-${itemId}`
     )
-  }
-}
-
-// Test function to trigger a nudge notification immediately
-export async function testNudgeNotification(type: 'feature' | 'task' | 'journal' | 'habit'): Promise<boolean> {
-  if (Notification.permission !== 'granted') {
-    console.log('[v0] Notification permission not granted')
-    return false
-  }
-
-  const messages: Record<string, { title: string; body: string }> = {
-    feature: {
-      title: 'LifePilot',
-      body: "Got something on your mind? Talk to LifePilot — it's like texting your most organized friend."
-    },
-    task: {
-      title: 'LifePilot',
-      body: 'You\'ve got "Test Task" on your list. Even starting is progress — what\'s the first tiny step?'
-    },
-    journal: {
-      title: 'LifePilot',
-      body: "Your day had moments worth remembering. Take 60 seconds to write one down before it slips away."
-    },
-    habit: {
-      title: 'LifePilot',
-      body: "Your habits are waiting for today's check mark. One tap keeps your streak alive."
-    }
-  }
-
-  const { title, body } = messages[type]
-  const tag = `test-nudge-${type}-${Date.now()}`
-
-  // Try service worker first
-  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage({
-      type: 'SHOW_NOTIFICATION',
-      title,
-      body,
-      tag,
-    })
-    console.log('[v0] Test nudge sent via service worker:', type)
-    return true
-  }
-
-  // Fallback to direct notification
-  try {
-    new Notification(title, {
-      body,
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-      tag,
-      requireInteraction: true,
-    })
-    console.log('[v0] Test nudge sent directly:', type)
-    return true
-  } catch (e) {
-    console.error('[v0] Failed to send test nudge:', e)
-    return false
   }
 }
 

@@ -46,7 +46,7 @@ export function IOSInstallPrompt() {
                 <span className="text-lg">✦</span>
               </div>
               <div>
-                <p className="font-bold text-stone-800 text-[15px]">Install LifePilot</p>
+                <p className="font-bold text-stone-800 text-[15px]">Install Life Pilot AI</p>
                 <p className="text-[11px] text-stone-500">Get notifications, voice shortcuts & more</p>
               </div>
             </div>

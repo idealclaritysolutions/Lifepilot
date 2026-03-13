@@ -27,7 +27,7 @@ export async function getUserLocation(): Promise<UserLocation | null> {
         try {
           const res = await fetch(
             `https://nominatim.openstreetmap.org/reverse?lat=${loc.latitude}&lon=${loc.longitude}&format=json&addressdetails=1`,
-            { headers: { 'User-Agent': 'LifePilot/1.0' } }
+            { headers: { 'User-Agent': 'LifePilotAI/1.0' } }
           )
           if (res.ok) {
             const data = await res.json()

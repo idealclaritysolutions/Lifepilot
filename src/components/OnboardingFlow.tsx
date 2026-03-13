@@ -67,7 +67,7 @@ export function OnboardingFlow({ onComplete }: Props) {
               <Sparkles className="w-10 h-10 text-amber-800" />
             </div>
             <h1 className="text-3xl font-bold text-stone-900 mb-3" style={{ fontFamily: "'Georgia', serif" }}>
-              Meet LifePilot
+              Meet Life Pilot AI
             </h1>
             <p className="text-lg text-stone-500 mb-2 leading-relaxed">
               Your AI co-pilot for everything life throws at you.
@@ -207,7 +207,7 @@ export function OnboardingFlow({ onComplete }: Props) {
               onClick={handleComplete}
               className="w-full bg-stone-900 hover:bg-stone-800 text-white py-6 text-lg rounded-2xl"
             >
-              Launch my LifePilot <Sparkles className="ml-2 w-5 h-5" />
+              Launch my Life Pilot AI <Sparkles className="ml-2 w-5 h-5" />
             </Button>
           </div>
         )}

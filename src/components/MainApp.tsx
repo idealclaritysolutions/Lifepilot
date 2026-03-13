@@ -14,7 +14,7 @@ import { AccountView } from '@/components/AccountView'
 import { SharedListView } from '@/components/SharedListView'
 import type { AppState, LifeItem, JournalEntry, UserProfile, Person, Habit, Purchase, Subscription, TIER_LIMITS } from '@/App'
 import type { UserLocation } from '@/hooks/use-location'
-import { MessageCircle, LayoutGrid, Bell, BookOpen, Users, Flame, Settings as SettingsIcon, Crown, UserCircle, Sparkles } from 'lucide-react'
+import { MessageCircle, LayoutGrid, Bell, BookOpen, Users, Flame, Settings as SettingsIcon, Crown, UserCircle } from 'lucide-react'
 
 interface Props {
   state: AppState
@@ -63,10 +63,19 @@ export function MainApp(props: Props) {
     setActiveTab(tab)
     try { sessionStorage.setItem('lp-active-tab', tab) } catch {}
   }
-  const [showSettings, setShowSettings] = useState(false)
-  const [showSubscription, setShowSubscription] = useState(false)
-  const [showAccount, setShowAccount] = useState(false)
-  const [showSharedList, setShowSharedList] = useState(false)
+  const [showSettings, setShowSettings] = useState(() => sessionStorage.getItem('lp-overlay') === 'settings')
+  const [showSubscription, setShowSubscription] = useState(() => sessionStorage.getItem('lp-overlay') === 'subscription')
+  const [showAccount, setShowAccount] = useState(() => sessionStorage.getItem('lp-overlay') === 'account')
+  const [showSharedList, setShowSharedList] = useState(() => sessionStorage.getItem('lp-overlay') === 'sharedlist')
+
+  // Track overlay changes in sessionStorage
+  useEffect(() => {
+    if (showSettings) sessionStorage.setItem('lp-overlay', 'settings')
+    else if (showSubscription) sessionStorage.setItem('lp-overlay', 'subscription')
+    else if (showAccount) sessionStorage.setItem('lp-overlay', 'account')
+    else if (showSharedList) sessionStorage.setItem('lp-overlay', 'sharedlist')
+    else sessionStorage.removeItem('lp-overlay')
+  }, [showSettings, showSubscription, showAccount, showSharedList])
   const { isSignedIn, user } = useAuth()
 
   const overdueCount = state.items.filter(i => {
@@ -122,7 +131,7 @@ export function MainApp(props: Props) {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold text-stone-800 leading-tight" style={{ fontFamily: "'Georgia', serif" }}>LifePilot</h1>
+              <h1 className="text-base font-bold text-stone-800 leading-tight" style={{ fontFamily: "'Georgia', serif" }}>Life Pilot AI</h1>
               {tierLabel && (
                 <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700">{tierLabel}</span>
               )}
@@ -157,7 +166,7 @@ export function MainApp(props: Props) {
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
         <TabsContent value="chat" className="flex-1 overflow-hidden m-0 data-[state=inactive]:hidden">
-          <ChatView state={state} addItem={addItem} updateItem={updateItem} removeItem={removeItem} addChat={addChat} addPerson={addPerson} updatePerson={updatePerson} addPurchase={addPurchase} incrementMessageCount={incrementMessageCount} locationHook={locationHook} userId={user?.id} />
+          <ChatView state={state} addItem={addItem} updateItem={updateItem} removeItem={removeItem} addChat={addChat} addPerson={addPerson} updatePerson={updatePerson} addPurchase={addPurchase} incrementMessageCount={incrementMessageCount} locationHook={locationHook} userId={user?.id} addHabit={addHabit} updateHabit={updateHabit} addJournalEntry={addJournalEntry} />
         </TabsContent>
         <TabsContent value="board" className="flex-1 overflow-auto m-0 data-[state=inactive]:hidden">
           <LifeBoard state={state} updateItem={updateItem} removeItem={removeItem} />
@@ -168,14 +177,11 @@ export function MainApp(props: Props) {
         <TabsContent value="journal" className="flex-1 overflow-auto m-0 data-[state=inactive]:hidden">
           <JournalView state={state} addJournalEntry={addJournalEntry} deleteJournalEntry={deleteJournalEntry} updateJournalEntry={updateJournalEntry} />
         </TabsContent>
-        <TabsContent value="nudges" className="flex-1 overflow-auto m-0 data-[state=inactive]:hidden">
-          <NudgesView state={state} addChat={addChat} onNavigateToChat={() => handleTabChange('chat')} />
-        </TabsContent>
         <TabsContent value="habits" className="flex-1 overflow-auto m-0 data-[state=inactive]:hidden">
           <HabitsView state={state} addHabit={addHabit} toggleHabitDay={toggleHabitDay} removeHabit={removeHabit} updateHabit={updateHabit} />
         </TabsContent>
 
-        <TabsList className="flex-none grid grid-cols-6 h-16 bg-white border-t border-stone-100 rounded-none shadow-[0_-2px_10px_rgba(0,0,0,0.04)]">
+        <TabsList className="flex-none grid grid-cols-5 h-16 bg-white border-t border-stone-100 rounded-none shadow-[0_-2px_10px_rgba(0,0,0,0.04)]">
           <TabsTrigger value="chat"
             className="flex flex-col items-center gap-0.5 data-[state=active]:text-amber-600 data-[state=active]:bg-transparent text-stone-600 rounded-none border-0 shadow-none">
             <MessageCircle className="w-5 h-5" /><span className="text-xs font-medium">Chat</span>
@@ -193,10 +199,6 @@ export function MainApp(props: Props) {
           <TabsTrigger value="journal"
             className="flex flex-col items-center gap-0.5 data-[state=active]:text-indigo-600 data-[state=active]:bg-transparent text-stone-600 rounded-none border-0 shadow-none">
             <BookOpen className="w-5 h-5" /><span className="text-xs font-medium">Journal</span>
-          </TabsTrigger>
-          <TabsTrigger value="nudges"
-            className="flex flex-col items-center gap-0.5 data-[state=active]:text-violet-600 data-[state=active]:bg-transparent text-stone-600 rounded-none border-0 shadow-none">
-            <Sparkles className="w-5 h-5" /><span className="text-xs font-medium">Nudges</span>
           </TabsTrigger>
           <TabsTrigger value="habits"
             className="flex flex-col items-center gap-0.5 data-[state=active]:text-orange-600 data-[state=active]:bg-transparent text-stone-600 rounded-none border-0 shadow-none">
