@@ -70,10 +70,17 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'No messages provided' });
     }
 
-    // Clean messages
+    // Request size validation
+    const bodySize = JSON.stringify(req.body).length;
+    if (bodySize > 500000) {
+      return res.status(413).json({ error: 'Request too large' });
+    }
+
+    // Clean and sanitize messages
     const clean = messages
       .filter(m => m && m.content && String(m.content).trim())
-      .map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content).trim() }));
+      .slice(-20) // Limit to last 20 messages
+      .map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content).trim().substring(0, 10000) }));
 
     const deduped = [];
     for (const msg of clean) {
@@ -132,6 +139,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json(JSON.parse(text));
   } catch (err) {
-    return res.status(500).json({ error: String(err.message) });
+    console.error('[Chat API] Error:', err.message);
+    return res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 }

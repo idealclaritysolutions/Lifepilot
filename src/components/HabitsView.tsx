@@ -51,6 +51,28 @@ function getLast7Days(): string[] {
   return days
 }
 
+// Returns the current calendar week (Sun-Sat) with labels
+function getCurrentWeekDays(): { date: string; dayLabel: string; dateLabel: string; isToday: boolean }[] {
+  const today = new Date()
+  const todayStr = today.toISOString().split('T')[0]
+  const dayOfWeek = today.getDay() // 0=Sun, 6=Sat
+  const days: { date: string; dayLabel: string; dateLabel: string; isToday: boolean }[] = []
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today)
+    d.setDate(today.getDate() - dayOfWeek + i)
+    const dateStr = d.toISOString().split('T')[0]
+    days.push({
+      date: dateStr,
+      dayLabel: dayNames[i],
+      dateLabel: String(d.getDate()),
+      isToday: dateStr === todayStr,
+    })
+  }
+  return days
+}
+
 function getLast30Days(): string[] {
   const days = []
   for (let i = 29; i >= 0; i--) days.push(new Date(Date.now() - i * 86400000).toISOString().split('T')[0])
@@ -174,30 +196,62 @@ export function HabitsView({ state, addHabit, toggleHabitDay, removeHabit, updat
       {/* HEATMAP VIEW */}
       {viewMode === 'heatmap' && totalHabits > 0 && (
         <div className="space-y-4">
-          {state.habits.map(habit => (
-            <div key={habit.id} className="bg-white rounded-2xl border border-stone-100 p-4 shadow-sm">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-lg">{habit.emoji}</span>
-                <p className="text-sm font-semibold text-stone-800">{habit.name}</p>
-                <span className="text-xs text-stone-500 ml-auto">{getWeeklyRate(habit.completions, 30)}% / 30d</span>
+          {state.habits.map(habit => {
+            const completionSet = new Set(habit.completions)
+            return (
+              <div key={habit.id} className="bg-white rounded-2xl border border-stone-100 p-4 shadow-sm">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-lg">{habit.emoji}</span>
+                  <p className="text-sm font-semibold text-stone-800">{habit.name}</p>
+                  <span className="text-xs text-stone-500 ml-auto">{getWeeklyRate(habit.completions, 30)}% / 30d</span>
+                </div>
+                {/* Calendar grid with day headers */}
+                <div className="grid grid-cols-7 gap-1">
+                  {['S','M','T','W','T','F','S'].map((d, i) => (
+                    <div key={i} className="text-center text-[10px] font-semibold text-stone-400 pb-1">{d}</div>
+                  ))}
+                  {(() => {
+                    // Build a proper 5-week calendar view
+                    const cells: JSX.Element[] = []
+                    const startDate = new Date()
+                    startDate.setDate(startDate.getDate() - 34) // Go back ~5 weeks
+                    // Align to start of week (Sunday)
+                    startDate.setDate(startDate.getDate() - startDate.getDay())
+                    const todayStr = new Date().toISOString().split('T')[0]
+                    
+                    for (let i = 0; i < 35; i++) {
+                      const d = new Date(startDate)
+                      d.setDate(startDate.getDate() + i)
+                      const dateStr = d.toISOString().split('T')[0]
+                      const done = completionSet.has(dateStr)
+                      const isToday = dateStr === todayStr
+                      const isFuture = d > new Date()
+                      const dayNum = d.getDate()
+                      
+                      cells.push(
+                        <button key={dateStr} onClick={() => !isFuture && toggleHabitDay(habit.id, dateStr)}
+                          disabled={isFuture}
+                          className={`aspect-square rounded-md flex items-center justify-center text-xs font-medium transition-all ${
+                            isFuture ? 'bg-stone-50 text-stone-300'
+                            : done ? 'bg-emerald-400 text-white shadow-sm'
+                            : isToday ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-300'
+                            : 'bg-stone-50 text-stone-500 hover:bg-stone-100'
+                          }`}>
+                          {dayNum}
+                        </button>
+                      )
+                    }
+                    return cells
+                  })()}
+                </div>
+                <div className="flex justify-between mt-2 text-[10px] text-stone-400">
+                  <span>{new Date(Date.now() - 34 * 86400000).toLocaleDateString('en-US', { month: 'short' })}</span>
+                  <span className="font-medium text-emerald-600">{habit.completions.filter(c => last30.includes(c)).length} / 30 days</span>
+                  <span>{new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
+                </div>
               </div>
-              <div className="grid grid-cols-10 gap-1">
-                {last30.map(day => {
-                  const done = habit.completions.includes(day)
-                  return (
-                    <div key={day} title={day}
-                      className={`aspect-square rounded-sm transition-all ${
-                        done ? 'bg-emerald-400' : 'bg-stone-100'
-                      }`} />
-                  )
-                })}
-              </div>
-              <div className="flex justify-between mt-2 text-xs text-stone-500">
-                <span>30 days ago</span>
-                <span>Today</span>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -304,45 +358,35 @@ export function HabitsView({ state, addHabit, toggleHabitDay, removeHabit, updat
                         <p className="text-sm text-stone-600 mb-2 italic">"{habit.notes}"</p>
                       )}
 
-                      {/* 7-day mini grid */}
-                      <div className="flex gap-1.5">
-                        {last7.map(day => {
-                          const done = habit.completions.includes(day)
-                          const isToday = day === today
-                          const label = new Date(day + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'narrow' })
+                      {/* Weekly tracker — Sun to Sat with dates */}
+                      <div className="flex gap-1">
+                        {getCurrentWeekDays().map(({ date, dayLabel, dateLabel, isToday }) => {
+                          const done = habit.completions.includes(date)
                           return (
-                            <button key={day} onClick={() => toggleHabitDay(habit.id, day)}
-                              className={`flex-1 flex flex-col items-center gap-1 py-2 rounded-lg text-xs font-medium transition-all ${
-                                done ? 'bg-emerald-100 text-emerald-800' : isToday ? 'bg-amber-50 text-stone-700' : 'bg-stone-50 text-stone-600'
+                            <button key={date} onClick={() => toggleHabitDay(habit.id, date)}
+                              className={`flex-1 flex flex-col items-center gap-0.5 py-2 rounded-lg text-xs font-medium transition-all ${
+                                done ? 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200' 
+                                : isToday ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200' 
+                                : 'bg-stone-50 text-stone-500'
                               }`}>
-                              <span>{label}</span>
-                              <span className="text-sm">{done ? '✓' : '·'}</span>
+                              <span className="text-[10px] font-semibold uppercase">{dayLabel}</span>
+                              <span className={`text-sm ${done ? 'text-emerald-600' : ''}`}>{done ? '✓' : dateLabel}</span>
                             </button>
                           )
                         })}
                       </div>
 
-                      {/* Expand for options */}
+                      {/* Expand for edit */}
                       <button onClick={() => { setExpandedHabit(isExpanded ? null : habit.id); setEditNote(habit.notes || '') }}
                         className="flex items-center gap-1 mt-2 text-xs text-stone-500 hover:text-stone-700 font-medium">
                         {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                        {isExpanded ? 'Collapse' : 'Notes & options'}
+                        {isExpanded ? 'Collapse' : 'Edit & options'}
                       </button>
 
                       {isExpanded && (
-                        <div className="mt-2 space-y-2 pt-2 border-t border-stone-50">
-                          <textarea value={editNote} onChange={e => setEditNote(e.target.value)}
-                            placeholder="Why this habit matters to you..."
-                            rows={2}
-                            className="w-full px-3 py-2 rounded-xl border border-stone-200 text-sm text-stone-700 placeholder:text-stone-400 resize-none" />
-                          <div className="flex gap-2 flex-wrap">
-                            {updateHabit && (
-                              <button onClick={() => { updateHabit(habit.id, { notes: editNote }); setExpandedHabit(null) }}
-                                className="px-4 py-2 rounded-lg bg-amber-500 text-white text-xs font-medium">Save note</button>
-                            )}
-                            <button onClick={() => removeHabit(habit.id)} className="px-4 py-2 rounded-lg text-xs text-red-500 hover:bg-red-50 font-medium">Remove</button>
-                          </div>
-                        </div>
+                        <HabitEditForm habit={habit} editNote={editNote} setEditNote={setEditNote}
+                          updateHabit={updateHabit} removeHabit={removeHabit}
+                          onClose={() => setExpandedHabit(null)} />
                       )}
                     </div>
                   )
@@ -451,6 +495,110 @@ export function HabitsView({ state, addHabit, toggleHabitDay, removeHabit, updat
           <p className="text-base text-stone-600 max-w-xs mx-auto">Track the daily actions that shape your life. Each check mark is proof that you're becoming who you want to be.</p>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── HABIT EDIT FORM ─────────────────────────────────────────────
+
+function HabitEditForm({ habit, editNote, setEditNote, updateHabit, removeHabit, onClose }: {
+  habit: Habit
+  editNote: string
+  setEditNote: (s: string) => void
+  updateHabit?: (id: string, updates: Partial<Habit>) => void
+  removeHabit: (id: string) => void
+  onClose: () => void
+}) {
+  const [name, setName] = useState(habit.name)
+  const [emoji, setEmoji] = useState(habit.emoji)
+  const [category, setCategory] = useState(habit.category || 'other')
+  const [frequency, setFrequency] = useState(habit.frequency)
+  const [reminderTime, setReminderTime] = useState(habit.reminderTime || '')
+  const [targetValue, setTargetValue] = useState(habit.targetValue?.toString() || '')
+  const [targetUnit, setTargetUnit] = useState(habit.targetUnit || '')
+
+  const handleSave = () => {
+    if (!updateHabit || !name.trim()) return
+    updateHabit(habit.id, {
+      name: name.trim(),
+      emoji,
+      category,
+      frequency,
+      reminderTime: reminderTime || undefined,
+      targetValue: targetValue ? Number(targetValue) : undefined,
+      targetUnit: targetUnit.trim() || undefined,
+      notes: editNote.trim() || undefined,
+    })
+    onClose()
+  }
+
+  return (
+    <div className="mt-2 space-y-3 pt-3 border-t border-stone-100">
+      <div className="flex gap-2">
+        <input value={emoji} onChange={e => setEmoji(e.target.value)} maxLength={2}
+          className="w-12 text-center px-2 py-2 rounded-lg border border-stone-200 text-lg" />
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Habit name"
+          className="flex-1 px-3 py-2 rounded-lg border border-stone-200 text-sm text-stone-800" />
+      </div>
+
+      <div>
+        <p className="text-xs text-stone-500 mb-1">Category</p>
+        <div className="flex flex-wrap gap-1">
+          {CATEGORIES.map(cat => (
+            <button key={cat.id} onClick={() => setCategory(cat.id)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                category === cat.id ? 'bg-amber-100 text-amber-800 ring-1 ring-amber-300' : 'bg-stone-50 text-stone-600'
+              }`}>
+              {cat.emoji} {cat.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p className="text-xs text-stone-500 mb-1">Frequency</p>
+        <div className="flex gap-1.5">
+          {(['daily', 'weekdays', 'weekly'] as const).map(f => (
+            <button key={f} onClick={() => setFrequency(f)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium ${
+                frequency === f ? 'bg-amber-100 text-amber-800 ring-1 ring-amber-300' : 'bg-stone-50 text-stone-600'
+              }`}>
+              {f.charAt(0).toUpperCase() + f.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <p className="text-xs text-stone-500 mb-1">Target (optional)</p>
+          <div className="flex gap-1.5">
+            <input value={targetValue} onChange={e => setTargetValue(e.target.value)} type="number" placeholder="e.g. 8"
+              className="w-16 px-2 py-2 rounded-lg border border-stone-200 text-sm text-center" />
+            <input value={targetUnit} onChange={e => setTargetUnit(e.target.value)} placeholder="e.g. glasses"
+              className="flex-1 px-2 py-2 rounded-lg border border-stone-200 text-sm" />
+          </div>
+        </div>
+        <div>
+          <p className="text-xs text-stone-500 mb-1">Reminder</p>
+          <input value={reminderTime} onChange={e => setReminderTime(e.target.value)} type="time"
+            className="px-2 py-2 rounded-lg border border-stone-200 text-sm" />
+        </div>
+      </div>
+
+      <textarea value={editNote} onChange={e => setEditNote(e.target.value)}
+        placeholder="Why this habit matters to you..."
+        rows={2}
+        className="w-full px-3 py-2 rounded-xl border border-stone-200 text-sm text-stone-700 placeholder:text-stone-400 resize-none" />
+
+      <div className="flex gap-2">
+        <button onClick={handleSave} className="flex-1 py-2.5 rounded-lg bg-amber-500 text-white text-xs font-medium">
+          Save changes
+        </button>
+        <button onClick={() => removeHabit(habit.id)} className="px-4 py-2.5 rounded-lg text-xs text-red-500 hover:bg-red-50 font-medium">
+          Remove
+        </button>
+      </div>
     </div>
   )
 }

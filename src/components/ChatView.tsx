@@ -22,9 +22,12 @@ interface Props {
   incrementMessageCount: () => void
   locationHook: any
   userId?: string
+  addHabit?: (habit: any) => void
+  updateHabit?: (id: string, updates: any) => void
+  addJournalEntry?: (entry: any) => void
 }
 
-export function ChatView({ state, addItem, updateItem, removeItem, addChat, addPerson, updatePerson, addPurchase, incrementMessageCount, locationHook, userId }: Props) {
+export function ChatView({ state, addItem, updateItem, removeItem, addChat, addPerson, updatePerson, addPurchase, incrementMessageCount, locationHook, userId, addHabit, updateHabit, addJournalEntry }: Props) {
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [isListening, setIsListening] = useState(false)
@@ -234,14 +237,14 @@ export function ChatView({ state, addItem, updateItem, removeItem, addChat, addP
           setTimeout(() => {
             try {
               if ('Notification' in window && Notification.permission === 'granted') {
-                new Notification('⏰ LifePilot Reminder', {
+                new Notification('⏰ Life Pilot AI', {
                   body: message, icon: '/icon-192.png', tag: 'timer-' + taskId,
                 })
               }
             } catch {
               try {
                 navigator.serviceWorker?.controller?.postMessage({
-                  type: 'SHOW_NOTIFICATION', title: '⏰ LifePilot Reminder', body: message, data: { itemId: taskId },
+                  type: 'SHOW_NOTIFICATION', title: '⏰ Life Pilot AI', body: message, data: { itemId: taskId },
                 })
               } catch {}
             }
@@ -312,6 +315,52 @@ export function ChatView({ state, addItem, updateItem, removeItem, addChat, addP
           }
           break
         }
+        case 'add_habit': {
+          const h = action.payload
+          if (h.name) {
+            const newHabit = {
+              id: 'habit-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+              name: h.name,
+              emoji: h.emoji || '⭐',
+              frequency: h.frequency || 'daily',
+              category: h.category || 'other',
+              completions: [],
+              createdAt: new Date().toISOString(),
+              streakBest: 0,
+            }
+            addHabit(newHabit)
+            log.push(`✅ Created habit: ${h.emoji || '⭐'} ${h.name}`)
+          }
+          break
+        }
+        case 'complete_habit': {
+          const hp = action.payload
+          if (hp.habitName) {
+            const today = new Date().toISOString().split('T')[0]
+            const match = state.habits.find(h => h.name.toLowerCase().includes(hp.habitName.toLowerCase()))
+            if (match && !match.completions.includes(today)) {
+              updateHabit(match.id, { completions: [...match.completions, today] })
+              log.push(`🎯 Checked off: ${match.emoji} ${match.name}`)
+            }
+          }
+          break
+        }
+        case 'add_journal': {
+          const j = action.payload
+          if (j.content) {
+            const { extractThemes } = await import('@/components/JournalView')
+            const themes = extractThemes(j.content)
+            addJournalEntry({
+              id: 'journal-' + Date.now(),
+              content: j.content,
+              mood: j.mood || undefined,
+              createdAt: new Date().toISOString(),
+              themes,
+            })
+            log.push(`📓 Journal entry saved`)
+          }
+          break
+        }
       }
     }
 
@@ -346,7 +395,7 @@ export function ChatView({ state, addItem, updateItem, removeItem, addChat, addP
 
     const rec = new SR()
     const isAndroid = /android/i.test(navigator.userAgent)
-    rec.continuous = !isAndroid  // Android: false to prevent duplication
+    rec.continuous = !isAndroid  // Android: false prevents duplication. iOS: true for smooth recording.
     rec.interimResults = true
     rec.lang = 'en-US'
 
@@ -369,7 +418,10 @@ export function ChatView({ state, addItem, updateItem, removeItem, addChat, addP
         }
       }
       const display = chatFinalSegmentsRef.current.join(' ') + (interim ? ' ' + interim : '')
-      setInput(display.trim())
+      // Smart punctuation: capitalize first letter, add period at end
+      let cleaned = display.trim()
+      if (cleaned) cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
+      setInput(cleaned)
     }
 
     rec.onerror = (e: any) => {
@@ -379,19 +431,17 @@ export function ChatView({ state, addItem, updateItem, removeItem, addChat, addP
 
     rec.onend = () => {
       if (!chatStoppedByUserRef.current) {
-        const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
-        if (isIOS) {
-          // iOS: restart seamlessly (iOS handles continuous well)
+        const isAndroid = /android/i.test(navigator.userAgent)
+        if (isAndroid) {
+          // Android: stop cleanly. Text stays in input. User taps mic to continue or send.
+          setIsListening(false)
+        } else {
+          // iOS: restart seamlessly
           chatProcessedIdxRef.current = 0
           chatRestartTimeoutRef.current = setTimeout(() => {
             if (!chatStoppedByUserRef.current) launchChatRecognition()
             else setIsListening(false)
           }, 500)
-        } else {
-          // Android: do NOT restart (restart causes duplication).
-          // Recognition ended naturally after silence timeout (~60s).
-          // Text stays in input bar. User taps mic to record more or send.
-          setIsListening(false)
         }
       } else {
         setIsListening(false)
@@ -498,12 +548,20 @@ export function ChatView({ state, addItem, updateItem, removeItem, addChat, addP
       pendingDocItemsRef.current = []
     }
 
-    // Check message limit for free tier
+    // Check message limit for ALL tiers (no tier is unlimited now)
     const limits = (await import('@/App')).TIER_LIMITS[state.subscription.tier]
+    const planNames = (await import('@/App')).PLAN_NAMES
     const today = new Date().toDateString()
     const todayMessages = state.usageToday.date === today ? state.usageToday.messages : 0
     if (todayMessages >= limits.messagesPerDay) {
-      addChat({ role: 'assistant', content: `You've used your ${limits.messagesPerDay} free messages for today. 💛\n\nUpgrade to **Life Pilot** for unlimited conversations — your thoughts deserve space. Tap the 👑 icon in the top right to see plans, or enter a promo code if you have one.` })
+      const tier = state.subscription.tier
+      const currentPlan = planNames[tier]
+      let upgradeMsg = ''
+      if (tier === 'free') upgradeMsg = `Upgrade to **Life Pilot** ($16.99/mo) for 40 messages/day — your thoughts deserve space.`
+      else if (tier === 'pro') upgradeMsg = `Upgrade to **Inner Circle** ($34.99/mo) for 100 messages/day and shared lists, habits, and more.`
+      else if (tier === 'premium') upgradeMsg = `Upgrade to **Guided** ($129.99/mo) for 300 messages/day plus monthly coaching calls.`
+      else upgradeMsg = `You're on our top tier — your limit resets tomorrow. Thank you for being a Guided member! 🙏`
+      addChat({ role: 'assistant', content: `You've reached your ${limits.messagesPerDay} daily messages on ${currentPlan}. 💛\n\n${upgradeMsg}\n\nTap the 👑 icon to see plans.` })
       return
     }
 
@@ -549,10 +607,20 @@ export function ChatView({ state, addItem, updateItem, removeItem, addChat, addP
       
       if (searchAction && searchAction.payload?.query) {
         if (!hasFeature(state.subscription.tier, 'web_search')) {
-          addChat({ role: 'assistant', content: `I'd love to search the web for you! 🔍 Web search is available on the **Life Pilot** plan and above. Tap the 👑 icon to upgrade and I'll be able to find real-time products, news, prices, and more for you.` })
+          addChat({ role: 'assistant', content: `I'd love to search the web for you! 🔍 Web search is available on the **Life Pilot** plan ($16.99/mo) and above. Tap the 👑 icon to upgrade and I'll find real-time products, news, prices, and more for you.` })
           setIsTyping(false)
           return
         }
+        // Check daily search limit
+        const searchCountKey = 'lp-search-count-' + new Date().toDateString()
+        const searchCount = parseInt(localStorage.getItem(searchCountKey) || '0')
+        const searchLimit = (await import('@/App')).TIER_LIMITS[state.subscription.tier].searchesPerDay
+        if (searchCount >= searchLimit) {
+          addChat({ role: 'assistant', content: `You've used your ${searchLimit} web searches for today. Your searches reset tomorrow! 🔍\n\nI can still help from my knowledge — what would you like to know?` })
+          setIsTyping(false)
+          return
+        }
+        localStorage.setItem(searchCountKey, String(searchCount + 1))
         // Show searching indicator
         addChat({ role: 'assistant', content: `🔍 Searching for "${searchAction.payload.query}"...` })
         
@@ -726,7 +794,7 @@ export function ChatView({ state, addItem, updateItem, removeItem, addChat, addP
               </div>
             ))}
 
-            {/* Action log - shows what LifePilot just did */}
+            {/* Action log - shows what Life Pilot AI just did */}
             {actionLog.length > 0 && (
               <div className="flex justify-start">
                 <div className="max-w-[85%] rounded-2xl px-4 py-3 bg-amber-50 border border-amber-200 shadow-sm">
@@ -796,7 +864,7 @@ export function ChatView({ state, addItem, updateItem, removeItem, addChat, addP
           </button>
           <button onClick={() => {
               if (!hasFeature(state.subscription.tier, 'document_scanning')) {
-                toast.error('Document scanning is available on Life Pilot and above. Tap 👑 to upgrade.')
+                toast.error('Document scanning is available on the Life Pilot plan and above. Tap 👑 to upgrade.')
                 return
               }
               fileInputRef.current?.click()
