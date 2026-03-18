@@ -203,3 +203,83 @@ export function subscribeToSharedItems(householdId: string, callback: (items: Sh
     ).subscribe()
   return () => { supabase.removeChannel(channel) }
 }
+
+// ─── ACTIVITY LOG & USER DISPLAY ─────────────────────────────────
+
+export async function getUserDisplayName(userId: string): Promise<string> {
+  try {
+    const { data } = await supabase
+      .from('household_members')
+      .select('display_name')
+      .or(`user_id.eq.${userId},clerk_user_id.eq.${userId}`)
+      .single()
+    return data?.display_name || 'User'
+  } catch {
+    return 'User'
+  }
+}
+
+export async function logActivity(householdId: string, userId: string, action: string, details?: any): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('activity_log')
+      .insert({
+        household_id: householdId,
+        user_id: userId,
+        action,
+        details,
+        created_at: new Date().toISOString()
+      })
+    return !error
+  } catch {
+    return false
+  }
+}
+
+export async function getActivityLog(householdId: string, limit: number = 50): Promise<any[]> {
+  try {
+    const { data } = await supabase
+      .from('activity_log')
+      .select('*')
+      .eq('household_id', householdId)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    return data || []
+  } catch {
+    return []
+  }
+}
+
+export async function renameHousehold(householdId: string, newName: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('households')
+      .update({ name: newName })
+      .eq('id', householdId)
+    return !error
+  } catch {
+    return false
+  }
+}
+
+export interface HouseholdMember {
+  id?: string
+  household_id: string
+  clerk_user_id: string
+  user_id: string
+  role: 'owner' | 'member'
+  display_name?: string
+  joined_at?: string
+}
+
+export async function getHouseholdMembers(householdId: string): Promise<HouseholdMember[]> {
+  try {
+    const { data } = await supabase
+      .from('household_members')
+      .select('*')
+      .eq('household_id', householdId)
+    return data || []
+  } catch {
+    return []
+  }
+}
