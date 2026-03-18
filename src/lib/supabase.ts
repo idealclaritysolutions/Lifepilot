@@ -1,16 +1,57 @@
 import { createClient } from '@supabase/supabase-js'
 
+// Supabase client configuration
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://xttswnxtvlpvcoryuapd.supabase.co'
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0dHN3bnh0dmxwdmNvcnl1YXBkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzNTM5MTMsImV4cCI6MjA4NzkyOTkxM30.TObRT1g2kRpEDlmR9tAjbr7s0myUgbNS6dN2vo_nmGM'
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+
+// ─── TYPES ───────────────────────────────────────────────────────
+
+export interface SharedItem {
+  id?: string
+  household_id: string
+  text: string
+  category: string
+  checked: boolean
+  added_by: string
+  notes?: string
+  link?: string
+  created_at?: string
+}
+
+export interface HouseholdInfo {
+  id: string
+  name: string
+  shareCode: string
+  memberCount: number
+  role: string
+}
+
+export interface HouseholdMember {
+  id?: string
+  household_id: string
+  clerk_user_id: string
+  user_id: string
+  role: 'owner' | 'member'
+  display_name?: string
+  joined_at?: string
+}
+
+export interface ActivityEntry {
+  id?: string
+  household_id: string
+  user_id: string
+  action: string
+  details?: any
+  created_at?: string
+}
 
 // ─── USER DATA SYNC ──────────────────────────────────────────────
 
 export async function saveUserData(userId: string, data: any): Promise<boolean> {
   try {
     console.log('[Supabase] Saving data for:', userId)
-    // Write both user_id and clerk_user_id for backward compat
     const { error } = await supabase
       .from('user_data')
       .upsert({ 
@@ -21,7 +62,6 @@ export async function saveUserData(userId: string, data: any): Promise<boolean> 
       }, { onConflict: 'clerk_user_id' })
     if (error) {
       console.error('[Supabase] Save error (clerk_user_id):', error.message)
-      // Try with user_id conflict
       const { error: err2 } = await supabase
         .from('user_data')
         .upsert({ 
@@ -38,7 +78,6 @@ export async function saveUserData(userId: string, data: any): Promise<boolean> 
 
 export async function loadUserData(userId: string): Promise<any | null> {
   try {
-    // Try user_id first, then clerk_user_id
     const { data, error } = await supabase
       .from('user_data').select('app_state')
       .or(`user_id.eq.${userId},clerk_user_id.eq.${userId}`)
@@ -60,7 +99,7 @@ export async function deleteUserData(userId: string): Promise<boolean> {
   } catch { return false }
 }
 
-// ─── HOUSEHOLD / FAMILY SHARING (MULTIPLE HOUSEHOLDS) ────────────
+// ─── HOUSEHOLD / FAMILY SHARING ──────────────────────────────────
 
 function generateShareCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -101,11 +140,6 @@ export async function joinHousehold(userId: string, shareCode: string): Promise<
   } catch { return null }
 }
 
-export interface HouseholdInfo {
-  id: string; name: string; shareCode: string; memberCount: number; role: string
-}
-
-// Get ALL households for a user (not just one)
 export async function getMyHouseholds(userId: string): Promise<HouseholdInfo[]> {
   try {
     const { data: memberships } = await supabase
@@ -136,19 +170,31 @@ export async function leaveHousehold(userId: string, householdId: string): Promi
   } catch { return false }
 }
 
-// ─── SHARED ITEMS ────────────────────────────────────────────────
-
-export interface SharedItem {
-  id?: string
-  household_id: string
-  text: string
-  category: string
-  checked: boolean
-  added_by: string
-  notes?: string
-  link?: string
-  created_at?: string
+export async function renameHousehold(householdId: string, newName: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('households')
+      .update({ name: newName })
+      .eq('id', householdId)
+    return !error
+  } catch {
+    return false
+  }
 }
+
+export async function getHouseholdMembers(householdId: string): Promise<HouseholdMember[]> {
+  try {
+    const { data } = await supabase
+      .from('household_members')
+      .select('*')
+      .eq('household_id', householdId)
+    return data || []
+  } catch {
+    return []
+  }
+}
+
+// ─── SHARED ITEMS ────────────────────────────────────────────────
 
 export async function getSharedItems(householdId: string): Promise<SharedItem[]> {
   try {
@@ -236,7 +282,7 @@ export async function logActivity(householdId: string, userId: string, action: s
   }
 }
 
-export async function getActivityLog(householdId: string, limit: number = 50): Promise<any[]> {
+export async function getActivityLog(householdId: string, limit: number = 50): Promise<ActivityEntry[]> {
   try {
     const { data } = await supabase
       .from('activity_log')
@@ -244,49 +290,6 @@ export async function getActivityLog(householdId: string, limit: number = 50): P
       .eq('household_id', householdId)
       .order('created_at', { ascending: false })
       .limit(limit)
-    return data || []
-  } catch {
-    return []
-  }
-}
-
-export async function renameHousehold(householdId: string, newName: string): Promise<boolean> {
-  try {
-    const { error } = await supabase
-      .from('households')
-      .update({ name: newName })
-      .eq('id', householdId)
-    return !error
-  } catch {
-    return false
-  }
-}
-
-export interface HouseholdMember {
-  id?: string
-  household_id: string
-  clerk_user_id: string
-  user_id: string
-  role: 'owner' | 'member'
-  display_name?: string
-  joined_at?: string
-}
-
-export interface ActivityEntry {
-  id?: string
-  household_id: string
-  user_id: string
-  action: string
-  details?: any
-  created_at?: string
-}
-
-export async function getHouseholdMembers(householdId: string): Promise<HouseholdMember[]> {
-  try {
-    const { data } = await supabase
-      .from('household_members')
-      .select('*')
-      .eq('household_id', householdId)
     return data || []
   } catch {
     return []
