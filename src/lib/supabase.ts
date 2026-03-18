@@ -272,6 +272,15 @@ export interface HouseholdMember {
   joined_at?: string
 }
 
+export interface ActivityEntry {
+  id?: string
+  household_id: string
+  user_id: string
+  action: string
+  details?: any
+  created_at?: string
+}
+
 export async function getHouseholdMembers(householdId: string): Promise<HouseholdMember[]> {
   try {
     const { data } = await supabase
