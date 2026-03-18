@@ -1,0 +1,14 @@
+{
+  "framework": "vite",
+  "rewrites": [
+    { "source": "/privacy.html", "destination": "/privacy.html" },
+    { "source": "/terms.html", "destination": "/terms.html" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron-nudge",
+      "schedule": "0 14 * * *"
+    }
+  ]
+}

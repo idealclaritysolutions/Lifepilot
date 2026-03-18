@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Life Pilot AI — Coaching Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'DM Sans', sans-serif; background: #FAF9F6; color: #1c1917; min-height: 100vh; }
+  
+  .login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+  .login-card { background: white; border-radius: 20px; padding: 40px; max-width: 380px; width: 100%; box-shadow: 0 4px 24px rgba(0,0,0,0.06); border: 1px solid #f5f0eb; text-align: center; }
+  .login-card h1 { font-family: 'DM Serif Display', serif; font-size: 22px; margin-bottom: 6px; }
+  .login-card p { font-size: 13px; color: #78716c; margin-bottom: 24px; }
+  .login-card input { width: 100%; padding: 12px 16px; border: 1px solid #e7e5e4; border-radius: 12px; font-size: 14px; outline: none; margin-bottom: 12px; }
+  .login-card input:focus { border-color: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,0.15); }
+  .login-card button { width: 100%; padding: 12px; background: #1c1917; color: white; border: none; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .login-card button:hover { background: #292524; }
+  .login-card .error { color: #ef4444; font-size: 12px; margin-top: 8px; }
+
+  .dashboard { max-width: 900px; margin: 0 auto; padding: 20px; }
+  .dash-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #e7e5e4; }
+  .dash-header h1 { font-family: 'DM Serif Display', serif; font-size: 24px; }
+  .dash-header .subtitle { font-size: 12px; color: #a8a29e; margin-top: 2px; }
+  .dash-header button { padding: 8px 16px; background: #f5f5f4; border: 1px solid #e7e5e4; border-radius: 10px; font-size: 12px; cursor: pointer; color: #78716c; }
+  .dash-header button:hover { background: #e7e5e4; }
+
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .stat-card { background: white; border-radius: 16px; padding: 16px; border: 1px solid #f5f0eb; text-align: center; }
+  .stat-card .num { font-size: 28px; font-weight: 700; color: #1c1917; }
+  .stat-card .label { font-size: 11px; color: #a8a29e; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+
+  .user-card { background: white; border-radius: 20px; border: 1px solid #f5f0eb; margin-bottom: 16px; overflow: hidden; }
+  .user-header { padding: 20px; cursor: pointer; display: flex; align-items: center; gap: 14px; }
+  .user-header:hover { background: #fafaf9; }
+  .user-avatar { width: 44px; height: 44px; border-radius: 14px; background: linear-gradient(135deg, #fecdd3, #fda4af); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; color: #e11d48; flex-shrink: 0; }
+  .user-info { flex: 1; }
+  .user-name { font-weight: 600; font-size: 15px; }
+  .user-meta { font-size: 11px; color: #a8a29e; margin-top: 2px; }
+  .user-stats { display: flex; gap: 12px; }
+  .user-stats span { font-size: 11px; color: #78716c; background: #f5f5f4; padding: 4px 10px; border-radius: 8px; }
+  .chevron { color: #d6d3d1; font-size: 18px; transition: transform 0.2s; }
+  .chevron.open { transform: rotate(180deg); }
+
+  .user-detail { padding: 0 20px 20px; border-top: 1px solid #f5f0eb; display: none; }
+  .user-detail.open { display: block; }
+  .goal-card { background: #fafaf9; border-radius: 14px; padding: 16px; margin-top: 12px; border: 1px solid #f0ede8; }
+  .goal-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+  .goal-meta { font-size: 11px; color: #a8a29e; display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+  .progress-bar { height: 6px; background: #e7e5e4; border-radius: 999px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 999px; transition: width 0.4s; }
+  .progress-fill.low { background: #fbbf24; }
+  .progress-fill.high { background: #34d399; }
+
+  .task-list { margin-top: 10px; }
+  .task-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; border-bottom: 1px solid #f5f0eb; }
+  .task-item:last-child { border: none; }
+  .task-check { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #d6d3d1; flex-shrink: 0; }
+  .task-check.done { background: #34d399; border-color: #34d399; }
+  .task-text { color: #57534e; }
+  .task-text.done { text-decoration: line-through; color: #a8a29e; }
+  .habit-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; }
+  .streak-badge { font-size: 11px; font-weight: 600; color: #f97316; background: #fff7ed; padding: 2px 8px; border-radius: 8px; }
+  
+  .section-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #a8a29e; margin: 14px 0 6px; }
+  .empty { text-align: center; padding: 40px 20px; color: #a8a29e; font-size: 14px; }
+  .loading { text-align: center; padding: 60px 20px; color: #a8a29e; }
+
+  @media (max-width: 640px) {
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+    .user-stats { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Login -->
+<div id="loginScreen" class="login-screen">
+  <div class="login-card">
+    <h1>Coaching Dashboard</h1>
+    <p>Life Pilot AI — Guided Plan Admin</p>
+    <input type="password" id="adminKey" placeholder="Admin key" onkeydown="if(event.key==='Enter')login()">
+    <button onclick="login()">Sign In</button>
+    <div id="loginError" class="error" style="display:none"></div>
+  </div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboard" class="dashboard" style="display:none">
+  <div class="dash-header">
+    <div>
+      <h1>Coaching Dashboard</h1>
+      <p class="subtitle">Guided Plan clients — goals & progress</p>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="loadData()">↻ Refresh</button>
+      <button onclick="logout()">Sign Out</button>
+    </div>
+  </div>
+
+  <div id="statsRow" class="stats-row"></div>
+  <div id="userList"></div>
+</div>
+
+<script>
+let ADMIN_KEY = ''
+let DATA = []
+
+function login() {
+  const key = document.getElementById('adminKey').value.trim()
+  if (!key) return
+  ADMIN_KEY = key
+  document.getElementById('loginScreen').style.display = 'none'
+  document.getElementById('dashboard').style.display = 'block'
+  loadData()
+}
+
+function logout() {
+  ADMIN_KEY = ''
+  DATA = []
+  document.getElementById('loginScreen').style.display = 'flex'
+  document.getElementById('dashboard').style.display = 'none'
+  document.getElementById('adminKey').value = ''
+}
+
+async function loadData() {
+  document.getElementById('userList').innerHTML = '<div class="loading">Loading clients...</div>'
+  try {
+    const res = await fetch('/api/admin-coaching', { headers: { 'x-admin-key': ADMIN_KEY } })
+    if (res.status === 401) {
+      document.getElementById('loginError').style.display = 'block'
+      document.getElementById('loginError').textContent = 'Invalid admin key'
+      logout()
+      return
+    }
+    const data = await res.json()
+    DATA = data.users || []
+    render()
+  } catch (err) {
+    document.getElementById('userList').innerHTML = '<div class="empty">Failed to load. Check your connection.</div>'
+  }
+}
+
+function render() {
+  // Stats
+  const totalGoals = DATA.reduce((a, u) => a + u.stats.activeGoals, 0)
+  const totalTasks = DATA.reduce((a, u) => a + u.stats.pendingTasks + u.stats.completedTasks, 0)
+  const totalFocus = DATA.reduce((a, u) => a + u.stats.focusMinutesTotal, 0)
+  document.getElementById('statsRow').innerHTML = `
+    <div class="stat-card"><div class="num">${DATA.length}</div><div class="label">Clients</div></div>
+    <div class="stat-card"><div class="num">${totalGoals}</div><div class="label">Active Goals</div></div>
+    <div class="stat-card"><div class="num">${totalTasks}</div><div class="label">Total Tasks</div></div>
+    <div class="stat-card"><div class="num">${Math.round(totalFocus / 60)}h</div><div class="label">Focus Time</div></div>
+  `
+
+  // Users
+  if (DATA.length === 0) {
+    document.getElementById('userList').innerHTML = '<div class="empty">No Guided plan clients yet.<br>When someone subscribes to the Guided plan, they\'ll appear here.</div>'
+    return
+  }
+
+  document.getElementById('userList').innerHTML = DATA.map((u, idx) => {
+    const initials = u.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+    const lastActive = u.lastActive ? new Date(u.lastActive).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Unknown'
+    
+    const goalsHTML = u.goals.length > 0 ? u.goals.map(g => {
+      const pct = g.progress
+      const daysLeft = g.targetDate ? Math.ceil((new Date(g.targetDate) - new Date()) / 86400000) : null
+      const daysText = daysLeft !== null ? (daysLeft < 0 ? `<span style="color:#ef4444">${Math.abs(daysLeft)}d overdue</span>` : `${daysLeft}d left`) : ''
+      
+      const tasksHTML = g.tasks.length > 0 ? `
+        <div class="section-label">Tasks (${g.tasks.filter(t=>t.status==='done').length}/${g.tasks.length})</div>
+        <div class="task-list">${g.tasks.map(t => `
+          <div class="task-item">
+            <div class="task-check ${t.status === 'done' ? 'done' : ''}"></div>
+            <span class="task-text ${t.status === 'done' ? 'done' : ''}">${t.text}</span>
+            ${t.dueDate ? `<span style="font-size:10px;color:#a8a29e;margin-left:auto">${new Date(t.dueDate+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span>` : ''}
+          </div>
+        `).join('')}</div>
+      ` : ''
+
+      const habitsHTML = g.habits.length > 0 ? `
+        <div class="section-label">Habits</div>
+        ${g.habits.map(h => `
+          <div class="habit-row">
+            <span>${h.emoji}</span>
+            <span style="color:#57534e">${h.name}</span>
+            ${h.streak > 0 ? `<span class="streak-badge">🔥 ${h.streak}d</span>` : ''}
+          </div>
+        `).join('')}
+      ` : ''
+
+      return `
+        <div class="goal-card">
+          <div class="goal-title">${g.title}</div>
+          <div class="goal-meta">
+            <span>${g.category || 'general'}</span>
+            <span>${g.completedSteps}/${g.totalSteps} steps</span>
+            <span>${daysText}</span>
+            <span>${pct}%</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill ${pct >= 50 ? 'high' : 'low'}" style="width:${Math.min(100, pct)}%"></div>
+          </div>
+          ${tasksHTML}
+          ${habitsHTML}
+        </div>
+      `
+    }).join('') : '<div style="padding:12px 0;color:#a8a29e;font-size:13px">No active goals set yet</div>'
+
+    return `
+      <div class="user-card">
+        <div class="user-header" onclick="toggleUser(${idx})">
+          <div class="user-avatar">${initials}</div>
+          <div class="user-info">
+            <div class="user-name">${u.name}</div>
+            <div class="user-meta">Last active: ${lastActive}</div>
+          </div>
+          <div class="user-stats">
+            <span>🎯 ${u.stats.activeGoals} goals</span>
+            <span>✅ ${u.stats.completedTasks} done</span>
+            <span>📓 ${u.stats.journalEntries} entries</span>
+          </div>
+          <span class="chevron" id="chev-${idx}">▾</span>
+        </div>
+        <div class="user-detail" id="detail-${idx}">
+          ${goalsHTML}
+        </div>
+      </div>
+    `
+  }).join('')
+}
+
+function toggleUser(idx) {
+  const detail = document.getElementById('detail-' + idx)
+  const chev = document.getElementById('chev-' + idx)
+  const isOpen = detail.classList.contains('open')
+  // Close all
+  document.querySelectorAll('.user-detail').forEach(d => d.classList.remove('open'))
+  document.querySelectorAll('.chevron').forEach(c => c.classList.remove('open'))
+  if (!isOpen) {
+    detail.classList.add('open')
+    chev.classList.add('open')
+  }
+}
+</script>
+</body>
+</html>
