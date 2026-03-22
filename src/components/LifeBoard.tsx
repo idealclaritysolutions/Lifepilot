@@ -58,6 +58,7 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
   const [newCat, setNewCat] = useState<LifeItem['category']>('general')
   const [newDate, setNewDate] = useState('')
   const [newGoalId, setNewGoalId] = useState('')
+  const [newHabitLinkId, setNewHabitLinkId] = useState('')
   const [goalTitle, setGoalTitle] = useState('')
   const [goalDate, setGoalDate] = useState('')
   const [goalCat, setGoalCat] = useState<LifeItem['category']>('general')
@@ -96,8 +97,8 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
 
   const submitTask = () => {
     if (!newText.trim()) return
-    addItem({ id: `item-${Date.now()}`, text: newText.trim(), category: newCat, status: 'pending', createdAt: new Date().toISOString(), snoozeCount: 0, dueDate: newDate || undefined, goalId: newGoalId || undefined } as any)
-    setNewText(''); setNewDate(''); setNewGoalId(''); setShowAddTask(false)
+    addItem({ id: `item-${Date.now()}`, text: newText.trim(), category: newCat, status: 'pending', createdAt: new Date().toISOString(), snoozeCount: 0, dueDate: newDate || undefined, goalId: newGoalId || undefined, linkedHabitId: newHabitLinkId || undefined } as any)
+    setNewText(''); setNewDate(''); setNewGoalId(''); setNewHabitLinkId(''); setShowAddTask(false)
   }
 
   const submitHabit = () => {
@@ -196,35 +197,7 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
       {/* ═══ MY DAY ═══ */}
       {view === 'day' && (
         <>
-          {/* Add task button */}
-          <button onClick={() => setShowAddTask(!showAddTask)}
-            className="w-full flex items-center justify-center gap-1.5 p-3 rounded-xl bg-stone-800 text-white text-sm font-medium hover:bg-stone-700 mb-4">
-            <Plus className="w-4 h-4" /> Add a task
-          </button>
 
-          {showAddTask && (
-            <div className="bg-white rounded-2xl border border-amber-200 p-4 shadow-sm mb-4 space-y-2.5">
-              <input value={newText} onChange={e => setNewText(e.target.value)} placeholder="What needs to be done?"
-                className="w-full text-sm border border-stone-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-amber-300" autoFocus
-                onKeyDown={e => { if (e.key === 'Enter') submitTask() }} />
-              <div className="flex gap-2">
-                <select value={newCat} onChange={e => setNewCat(e.target.value as any)} className="flex-1 text-xs border border-stone-200 rounded-xl px-2.5 py-2">
-                  {CATS.map(c => <option key={c.key} value={c.key}>{c.emoji} {c.label}</option>)}
-                </select>
-                <input type="date" value={newDate} onChange={e => setNewDate(e.target.value)} className="flex-1 text-xs border border-stone-200 rounded-xl px-2.5 py-2" />
-              </div>
-              {goals.filter(g => g.status === 'active').length > 0 && (
-                <select value={newGoalId} onChange={e => setNewGoalId(e.target.value)} className="w-full text-xs border border-stone-200 rounded-xl px-2.5 py-2">
-                  <option value="">Standalone task</option>
-                  {goals.filter(g => g.status === 'active').map(g => <option key={g.id} value={g.id}>🎯 {g.title}</option>)}
-                </select>
-              )}
-              <div className="flex gap-2">
-                <button onClick={submitTask} className="flex-1 py-2.5 rounded-xl bg-stone-800 text-white text-sm font-medium">Add</button>
-                <button onClick={() => { setShowAddTask(false); setNewText('') }} className="px-4 py-2.5 rounded-xl bg-stone-100 text-stone-500 text-sm">Cancel</button>
-              </div>
-            </div>
-          )}
 
           {/* ─── Daily Habits ─── */}
           <div className="bg-gradient-to-br from-amber-50/60 to-orange-50/40 rounded-2xl border border-amber-100/60 p-4 mb-4">
@@ -397,16 +370,54 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
           </div>
 
           {/* ─── Tasks ─── */}
-          {!showDone && pending.length > 0 && (() => {
-            const grouped = CATS.map(cat => ({ ...cat, items: pending.filter(i => i.category === cat.key) })).filter(g => g.items.length > 0)
-            return grouped.length > 0 ? (
-              <>
-                {/* Tasks section header */}
-                <div className="flex items-center gap-2 mb-2 mt-1">
-                  <p className="text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Tasks</p>
-                  <div className="flex-1 h-px bg-stone-100" />
-                  <span className="text-[10px] text-stone-400 font-medium">{pending.length}</span>
+          {!showDone && (
+            <>
+              {/* Tasks section header with Add button */}
+              <div className="flex items-center gap-2 mb-2 mt-1">
+                <p className="text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Tasks</p>
+                <div className="flex-1 h-px bg-stone-100" />
+                {pending.length > 0 && <span className="text-[10px] text-stone-400 font-medium">{pending.length}</span>}
+                <button onClick={() => setShowAddTask(!showAddTask)}
+                  className="flex items-center gap-1 text-[10px] font-semibold text-stone-500 hover:text-stone-800 px-2 py-1 rounded-lg hover:bg-stone-100 transition-all">
+                  <Plus className="w-3 h-3" /> Add task
+                </button>
+              </div>
+
+              {/* Add task form */}
+              {showAddTask && (
+                <div className="bg-white rounded-2xl border border-amber-200 p-4 shadow-sm mb-3 space-y-2.5">
+                  <input value={newText} onChange={e => setNewText(e.target.value)} placeholder="What needs to be done?"
+                    className="w-full text-sm border border-stone-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-amber-300" autoFocus
+                    onKeyDown={e => { if (e.key === 'Enter') submitTask() }} />
+                  <div className="flex gap-2">
+                    <select value={newCat} onChange={e => setNewCat(e.target.value as any)} className="flex-1 text-xs border border-stone-200 rounded-xl px-2.5 py-2">
+                      {CATS.map(c => <option key={c.key} value={c.key}>{c.emoji} {c.label}</option>)}
+                    </select>
+                    <input type="date" value={newDate} onChange={e => setNewDate(e.target.value)} className="flex-1 text-xs border border-stone-200 rounded-xl px-2.5 py-2" />
+                  </div>
+                  {goals.filter(g => g.status === 'active').length > 0 && (
+                    <select value={newGoalId} onChange={e => setNewGoalId(e.target.value)} className="w-full text-xs border border-stone-200 rounded-xl px-2.5 py-2">
+                      <option value="">Standalone task</option>
+                      {goals.filter(g => g.status === 'active').map(g => <option key={g.id} value={g.id}>🎯 {g.title}</option>)}
+                    </select>
+                  )}
+                  {habits.length > 0 && (
+                    <select value={newHabitLinkId} onChange={e => setNewHabitLinkId(e.target.value)} className="w-full text-xs border border-stone-200 rounded-xl px-2.5 py-2">
+                      <option value="">No linked habit</option>
+                      {habits.map(h => <option key={h.id} value={h.id}>{h.emoji} {h.name}</option>)}
+                    </select>
+                  )}
+                  <div className="flex gap-2">
+                    <button onClick={submitTask} className="flex-1 py-2.5 rounded-xl bg-stone-800 text-white text-sm font-medium">Add</button>
+                    <button onClick={() => { setShowAddTask(false); setNewText('') }} className="px-4 py-2.5 rounded-xl bg-stone-100 text-stone-500 text-sm">Cancel</button>
+                  </div>
                 </div>
+              )}
+
+              {/* Task categories */}
+              {pending.length > 0 && (() => {
+                const grouped = CATS.map(cat => ({ ...cat, items: pending.filter(i => i.category === cat.key) })).filter(g => g.items.length > 0)
+                return grouped.length > 0 ? (
                 <div className="space-y-3">
                   {grouped.map(g => {
                     const isCollapsed = collapsedCats.has(g.key)
@@ -526,9 +537,10 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
                     )
                   })}
                 </div>
-              </>
-            ) : null
-          })()}
+              ) : null
+              })()}
+            </>
+          )}
 
           {/* Done toggle */}
           <div className="flex justify-center mt-4">
@@ -544,7 +556,7 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
           ))}</div>}
 
           {pending.length === 0 && habits.length === 0 && !showAddTask && (
-            <div className="text-center py-12"><Sparkles className="w-8 h-8 text-amber-300 mx-auto mb-3" /><p className="text-sm font-medium text-stone-600 mb-1">Your day is clear</p><p className="text-xs text-stone-400">Add a task above or ask the AI</p></div>
+            <div className="text-center py-12"><Sparkles className="w-8 h-8 text-amber-300 mx-auto mb-3" /><p className="text-sm font-medium text-stone-600 mb-1">Your day is clear</p><p className="text-xs text-stone-400">Add a task or habit to get started</p></div>
           )}
         </>
       )}
