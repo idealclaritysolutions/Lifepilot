@@ -110,8 +110,8 @@ export const PROMO_CODES: Record<string, { tier: SubscriptionTier; durationDays:
   'BETA2026': { tier: 'premium', durationDays: 90, label: 'Beta Tester — Inner Circle for 90 days' },
   'FRIEND50': { tier: 'premium', durationDays: 60, label: 'Friend of Life Pilot AI — Inner Circle for 60 days' },
   'LAUNCH30': { tier: 'premium', durationDays: 30, label: 'Launch Special — Inner Circle for 30 days' },
-  'GOOGLEREVIEW': { tier: 'enterprise', durationDays: null, label: 'Google Play Reviewer — Full access' },
-  'REVIEWER2026': { tier: 'enterprise', durationDays: null, label: 'App Reviewer — Full access' },
+  'GOOGLEXYZREVIEW': { tier: 'enterprise', durationDays: null, label: 'Google Play Reviewer — Full access' },
+  'PILOTXYZADMIN': { tier: 'enterprise', durationDays: null, label: 'Admin — Guided plan forever' },
 }
 
 // ─── HABITS SYSTEM ────────────────────────────────────────────────

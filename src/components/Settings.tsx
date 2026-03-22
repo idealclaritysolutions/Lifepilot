@@ -430,7 +430,7 @@ export function Settings({ state, notifications, locationHook, updateProfile, se
               const code = prompt('Enter access code:')
               if (code) {
                 const codeMap: Record<string, string> = {
-                  'GOOGLEREVIEW': 'enterprise', 'REVIEWER2026': 'enterprise',
+                  'GOOGLEXYZREVIEW': 'enterprise', 'PILOTXYZADMIN': 'enterprise',
                   'FOUNDING100': 'premium', 'LIFEPILOT2026': 'premium',
                   'BETA2026': 'premium', 'FRIEND50': 'premium', 'LAUNCH30': 'premium',
                 }
