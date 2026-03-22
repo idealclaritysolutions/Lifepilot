@@ -440,8 +440,10 @@ function App() {
         const cloudData = await loadUserData(authUser.id)
         if (cloudData && cloudData.profile?.onboarded) {
           // Compare timestamps — only update if cloud is newer
+          // Read from localStorage (not state) because state.lastSyncedAt is never updated after init
           const cloudTime = new Date(cloudData.lastSyncedAt || 0).getTime()
-          const localTime = new Date(state.lastSyncedAt || 0).getTime()
+          const localStored = localStorage.getItem(STORAGE_KEY)
+          const localTime = localStored ? new Date(JSON.parse(localStored).lastSyncedAt || 0).getTime() : 0
           if (cloudTime > localTime) {
             console.log('[LifePilot] Cloud data is newer, syncing to device')
             setState(prev => ({ ...DEFAULT_STATE, ...cloudData }))

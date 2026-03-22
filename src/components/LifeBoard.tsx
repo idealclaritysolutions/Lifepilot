@@ -292,27 +292,13 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
                       className={`w-[22px] h-[22px] rounded-lg flex items-center justify-center flex-none transition-all ${doneToday ? 'bg-emerald-500 text-white' : 'border-2 border-stone-200 hover:border-emerald-400'}`}>
                       {doneToday && <Check className="w-3 h-3" />}
                     </button>
-                    {editingHabitId !== h.id && <span className="text-sm">{h.emoji}</span>}
+                    <span className="text-sm">{h.emoji}</span>
 
-                    {/* Habit name — editable or button to expand calendar */}
-                    {editingHabitId === h.id ? (
-                      <div className="flex-1 flex items-center gap-1.5">
-                        <span className="text-sm cursor-pointer" onClick={() => {
-                          const emojis = HABIT_EMOJIS
-                          const ci = emojis.indexOf(editHabitEmoji)
-                          setEditHabitEmoji(emojis[(ci + 1) % emojis.length])
-                        }}>{editHabitEmoji}</span>
-                        <input value={editHabitName} onChange={e => setEditHabitName(e.target.value)} autoFocus
-                          className="flex-1 text-[13px] bg-white border border-amber-300 rounded-lg px-2 py-1 focus:outline-none"
-                          onKeyDown={e => { if (e.key === 'Enter') saveHabitEdit(h.id); if (e.key === 'Escape') setEditingHabitId(null) }}
-                          onBlur={() => saveHabitEdit(h.id)} />
-                      </div>
-                    ) : (
-                      <button onClick={() => setExpandedHabit(isOpen ? null : h.id)}
-                        className={`text-[13px] flex-1 text-left ${doneToday ? 'text-stone-400 line-through' : 'text-stone-800'}`}>
-                        {h.name}
-                      </button>
-                    )}
+                    {/* Habit name — tap to expand calendar */}
+                    <button onClick={() => setExpandedHabit(isOpen ? null : h.id)}
+                      className={`text-[13px] flex-1 text-left ${doneToday ? 'text-stone-400 line-through' : 'text-stone-800'}`}>
+                      {h.name}
+                    </button>
 
                     {/* Streak badge */}
                     {streak >= 2 && <span className="text-[10px] font-bold text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">🔥 {streak}d</span>}
@@ -326,8 +312,14 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
                     {editingHabitId !== h.id && (
                       <>
                         {/* Edit button */}
-                        <button onClick={() => { setEditingHabitId(h.id); setEditHabitName(h.name); setEditHabitEmoji(h.emoji) }}
-                          className="p-1 text-stone-300 hover:text-stone-500 flex-none" title="Edit habit">
+                        <button onClick={() => {
+                          setEditingHabitId(editingHabitId === h.id ? null : h.id)
+                          setEditHabitName(h.name)
+                          setEditHabitEmoji(h.emoji)
+                          setShowAddHabit(false)
+                          setLinkingHabitId(null)
+                        }}
+                          className={`p-1 flex-none ${editingHabitId === h.id ? 'text-amber-500' : 'text-stone-300 hover:text-stone-500'}`} title="Edit habit">
                           <Pencil className="w-3 h-3" />
                         </button>
                         {/* Goal link button */}
@@ -344,6 +336,28 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
                       </>
                     )}
                   </div>
+
+                  {/* Habit edit panel */}
+                  {editingHabitId === h.id && (
+                    <div className="mb-2 ml-9 bg-white rounded-xl border border-amber-200 p-2.5 space-y-2">
+                      <div className="flex gap-2">
+                        <select value={editHabitEmoji} onChange={e => setEditHabitEmoji(e.target.value)}
+                          className="text-lg border border-stone-200 rounded-lg px-1.5 py-1 bg-white focus:outline-none w-12 text-center">
+                          {HABIT_EMOJIS.map(e => <option key={e} value={e}>{e}</option>)}
+                        </select>
+                        <input value={editHabitName} onChange={e => setEditHabitName(e.target.value)}
+                          className="flex-1 text-sm border border-stone-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                          placeholder="Habit name…"
+                          onKeyDown={e => { if (e.key === 'Enter') saveHabitEdit(h.id); if (e.key === 'Escape') setEditingHabitId(null) }} />
+                      </div>
+                      <div className="flex gap-1.5">
+                        <button onClick={() => saveHabitEdit(h.id)}
+                          className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold">Save</button>
+                        <button onClick={() => setEditingHabitId(null)}
+                          className="px-3 py-1.5 rounded-lg bg-stone-100 text-stone-400 text-xs">Cancel</button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Habit goal-link panel */}
                   {linkingHabitId === h.id && (
