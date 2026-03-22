@@ -115,7 +115,8 @@ export function ChatView(props: Props) {
               createdAt: new Date().toISOString(),
               dueDate: p.dueDate,
               snoozeCount: 0,
-            })
+              ...(p.goalId && { goalId: p.goalId }),
+            } as any)
             log.push(`✅ Added: ${p.text}${p.dueDate ? ` (due ${p.dueDate})` : ''}`)
           }
           break
@@ -131,7 +132,8 @@ export function ChatView(props: Props) {
               createdAt: new Date().toISOString(),
               dueDate: p.dueDate,
               snoozeCount: 0,
-            })
+              ...(p.goalId && { goalId: p.goalId }),
+            } as any)
           }
           log.push(`✅ Added ${items.length} items to your board`)
           break
@@ -139,13 +141,16 @@ export function ChatView(props: Props) {
         case 'update_item': {
           const p = action.payload
           if (p.id) {
+            const src = p.updates || p  // handle both flat and nested formats
             const updates: any = {}
-            if (p.text) updates.text = p.text
-            if (p.dueDate) updates.dueDate = p.dueDate
-            if (p.category) updates.category = p.category
-            if (p.status) updates.status = p.status
+            if (src.text) updates.text = src.text
+            if (src.dueDate) updates.dueDate = src.dueDate
+            if (src.category) updates.category = src.category
+            if (src.status) updates.status = src.status
+            if (src.eisenhower) updates.eisenhower = src.eisenhower
+            if ('goalId' in src) updates.goalId = src.goalId || undefined
             updateItem(p.id, updates)
-            log.push(`✏️ Updated: ${p.text || 'task'}`)
+            log.push(`✏️ Updated: ${src.text || 'task'}`)
           }
           break
         }
