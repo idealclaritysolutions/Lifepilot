@@ -255,6 +255,18 @@ const DEFAULT_STATE: AppState = {
 
 const STORAGE_KEY = 'lifepilot-state'
 
+// Deduplicate habits by ID — habits created via AI in the same batch may share IDs
+function dedupeHabits(habits: any[]): any[] {
+  const seen = new Set<string>()
+  return (habits || []).map((h: any) => {
+    if (seen.has(h.id)) {
+      return { ...h, id: `habit-${Date.now()}-${Math.random().toString(36).substring(2, 6)}` }
+    }
+    seen.add(h.id)
+    return h
+  })
+}
+
 function loadState(): AppState {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
@@ -270,6 +282,7 @@ function loadState(): AppState {
         notificationFrequency: parsed.notificationFrequency || '3x',
         quietHoursStart: parsed.quietHoursStart ?? 22,
         quietHoursEnd: parsed.quietHoursEnd ?? 7,
+        habits: dedupeHabits(parsed.habits),
       }
     }
   } catch (e) {
@@ -394,19 +407,19 @@ function App() {
               items: mergedItems,
               journal: mergedJournal.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
               people: mergedPeople,
-              habits: mergedHabits,
+              habits: dedupeHabits(mergedHabits),
               chatHistory: [...(cloudData.chatHistory || []), ...(localData.chatHistory || [])].slice(-100),
             }
             setState(prev => ({ ...DEFAULT_STATE, ...merged }))
             await saveUserData(currentUserId, { ...merged, lastSyncedAt: new Date().toISOString() })
           } else {
             console.log('[LifePilot] Cloud data is current, loading to device')
-            setState(prev => ({ ...DEFAULT_STATE, ...cloudData }))
+            setState(prev => ({ ...DEFAULT_STATE, ...cloudData, habits: dedupeHabits(cloudData.habits) }))
           }
         } else {
           // Different user — load ONLY their cloud data, no merge
           console.log('[LifePilot] Loading cloud data for new user (clean load)')
-          setState(prev => ({ ...DEFAULT_STATE, ...cloudData }))
+          setState(prev => ({ ...DEFAULT_STATE, ...cloudData, habits: dedupeHabits(cloudData.habits) }))
         }
       } else {
         // No cloud data for this user
@@ -446,7 +459,7 @@ function App() {
           const localTime = localStored ? new Date(JSON.parse(localStored).lastSyncedAt || 0).getTime() : 0
           if (cloudTime > localTime) {
             console.log('[LifePilot] Cloud data is newer, syncing to device')
-            setState(prev => ({ ...DEFAULT_STATE, ...cloudData }))
+            setState(prev => ({ ...DEFAULT_STATE, ...cloudData, habits: dedupeHabits(cloudData.habits) }))
           }
         }
       }
