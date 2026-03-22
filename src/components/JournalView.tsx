@@ -4,7 +4,7 @@ import { Textarea } from '@/components/ui/textarea'
 import type { AppState, JournalEntry } from '@/App'
 import { hasFeature } from '@/App'
 import { uid } from '@/lib/ai-engine'
-import { BookOpen, ChevronRight, Sparkles, Mic, MicOff, Search, X, TrendingUp, Calendar, Trash2, Pencil, Lock } from 'lucide-react'
+import { BookOpen, ChevronRight, Sparkles, Mic, MicOff, Search, X, TrendingUp, Calendar, Trash2, Pencil, Lock, Volume2, VolumeX } from 'lucide-react'
 
 interface Props {
   state: AppState
@@ -223,6 +223,45 @@ async function generateAITitle(content: string): Promise<string> {
   }
 }
 
+// AI-powered voice transcript cleanup: removes fillers, duplicates, corrects errors
+async function cleanTranscriptWithAI(text: string): Promise<string> {
+  if (text.trim().length < 30) return text
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: `Clean up this voice-to-text journal transcript. Your job:\n1. Remove filler words: um, uh, hmm, ah, er, "like" (when used as a filler), "you know", "I mean"\n2. Remove repeated words and phrases caused by speech recognition (e.g. "I I went" → "I went", "the the store" → "the store")\n3. Fix obvious speech-to-text errors and auto-correct misspelled or misheard words intelligently\n4. Do NOT change the meaning, add new content, or rewrite sentences — just clean what's there\n5. Keep the writer's personal voice and casual tone exactly as-is\n\nReturn ONLY the cleaned text. No preamble, no explanation, no quotes around it.\n\nTranscript:\n${text}` }],
+        system: 'You clean voice-to-text transcripts. Remove filler words and repetitions, fix speech recognition errors. Never alter meaning or add content. Return only the cleaned text.',
+      }),
+    })
+    const data = await res.json()
+    let cleaned = ''
+    if (data.content && Array.isArray(data.content)) {
+      cleaned = data.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('')
+    } else if (typeof data.response === 'string') {
+      cleaned = data.response
+    } else if (typeof data.message === 'string') {
+      cleaned = data.message
+    }
+    return cleaned?.trim() || text
+  } catch {
+    return text
+  }
+}
+
+// Instant client-side cleaning applied to each speech segment in real time
+function cleanSegmentInstant(text: string): string {
+  if (!text) return text
+  // Remove standalone filler words
+  let cleaned = text.replace(/\b(um+|uh+|er+|hmm+|mhm+|ah+)\b[\s,]*/gi, ' ')
+  // Remove immediately consecutive duplicate words: "I I went" → "I went"
+  cleaned = cleaned.replace(/\b(\w+)(\s+\1)+\b/gi, '$1')
+  // Remove consecutive duplicate 2-word phrases: "went to went to" → "went to"
+  cleaned = cleaned.replace(/\b(\w+ \w+)\s+\1\b/gi, '$1')
+  return cleaned.replace(/\s+/g, ' ').trim()
+}
+
 // ─── WEEKLY RECAP ───────────────────────────────────────────────────
 
 function getWeeklyRecap(journal: JournalEntry[]) {
@@ -282,14 +321,24 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
   const seenFinalsRef = useRef<Set<string>>(new Set())
   const processedIdxRef = useRef(0)
   const restartTimeoutRef = useRef<any>(null)
+  const [isCleaningTranscript, setIsCleaningTranscript] = useState(false)
+  const [speakingTarget, setSpeakingTarget] = useState<'summary' | 'entry' | null>(null)
+  const ttsRef = useRef<SpeechSynthesisUtterance | null>(null)
 
   useEffect(() => {
     return () => {
       stoppedByUserRef.current = true
       try { recognitionRef.current?.abort() } catch {}
       if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current)
+      try { window.speechSynthesis?.cancel() } catch {}
     }
   }, [])
+
+  // Stop TTS whenever the view changes
+  useEffect(() => {
+    try { window.speechSynthesis?.cancel() } catch {}
+    setSpeakingTarget(null)
+  }, [view])
 
   useEffect(() => {
     try {
@@ -377,7 +426,7 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
       let interim = ''
       for (let i = processedIdxRef.current; i < e.results.length; i++) {
         if (e.results[i].isFinal) {
-          const transcript = e.results[i][0].transcript.trim()
+          const transcript = cleanSegmentInstant(e.results[i][0].transcript.trim())
           if (!transcript) { processedIdxRef.current = i + 1; continue }
           const fp = transcript.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim()
           if (fp && !seenFinalsRef.current.has(fp)) {
@@ -442,13 +491,39 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
     if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current)
     try { recognitionRef.current?.stop() } catch {}
     setIsListening(false)
-    setContent(buildDisplayText())
+    const rawText = buildDisplayText()
+    setContent(rawText)
+    // Silently polish transcript with AI in background
+    if (rawText.trim().length > 20) {
+      setIsCleaningTranscript(true)
+      cleanTranscriptWithAI(rawText).then(cleaned => {
+        setContent(cleaned)
+        setIsCleaningTranscript(false)
+      })
+    }
   }
 
   const toggleVoice = () => {
     if (isListening) { stopVoice() } else { startVoice() }
   }
 
+  // ─── TEXT-TO-SPEECH ──────────────────────────────────
+  const speak = (text: string, target: 'summary' | 'entry') => {
+    if (!window.speechSynthesis) return
+    if (speakingTarget === target) {
+      window.speechSynthesis.cancel()
+      setSpeakingTarget(null)
+      return
+    }
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.rate = 0.95
+    utterance.onend = () => setSpeakingTarget(null)
+    utterance.onerror = () => setSpeakingTarget(null)
+    ttsRef.current = utterance
+    setSpeakingTarget(target)
+    window.speechSynthesis.speak(utterance)
+  }
 
   // ─── SAVE ───────────────────────────────────────────
   const handleSave = () => {
@@ -620,7 +695,14 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
         {/* AI Summary — shown first for quick scanning */}
         {summary && summary.length > 0 && (
           <div className="mb-4">
-            <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">Summary</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Summary</p>
+              <button onClick={() => speak(summary.join('. '), 'summary')}
+                className={`p-1.5 rounded-lg transition-all ${speakingTarget === 'summary' ? 'bg-indigo-100 text-indigo-600' : 'text-stone-400 hover:text-stone-600 hover:bg-stone-100'}`}
+                title={speakingTarget === 'summary' ? 'Stop reading' : 'Read summary aloud'}>
+                {speakingTarget === 'summary' ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+              </button>
+            </div>
             <div className="bg-amber-50/50 rounded-xl border border-amber-100/50 p-4 space-y-2">
               {summary.map((point, i) => (
                 <div key={i} className="flex items-start gap-2">
@@ -667,9 +749,15 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
         {/* Full entry with duplicate detector */}
         <details open className="bg-white rounded-2xl border border-stone-100 p-5 shadow-sm mb-4">
           <summary className="text-xs font-semibold text-stone-500 uppercase tracking-wider cursor-pointer">Full Entry</summary>
-          
-          {/* Duplicate detector button */}
-          <div className="flex justify-end mt-2 mb-1">
+
+          {/* Read aloud + Duplicate detector buttons */}
+          <div className="flex justify-between items-center mt-2 mb-1">
+            <button onClick={() => speak(readingEntry.content, 'entry')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${speakingTarget === 'entry' ? 'bg-indigo-100 text-indigo-600' : 'text-stone-500 hover:text-stone-700 hover:bg-stone-100'}`}
+              title={speakingTarget === 'entry' ? 'Stop reading' : 'Read entry aloud'}>
+              {speakingTarget === 'entry' ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
+              {speakingTarget === 'entry' ? 'Stop reading' : 'Read aloud'}
+            </button>
             <button onClick={() => setShowDuplicates(!showDuplicates)}
               className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
                 showDuplicates ? 'bg-amber-500 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
@@ -761,7 +849,7 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
   // ─── SAVED VIEW ──────────────────────────────────────
   if (view === 'saved' && justSaved) {
     const themes = justSaved.themes || extractThemes(justSaved.content)
-    const summary = justSaved.summary || generateSummary(justSaved.content)
+    const summary = justSaved.summary || quickSummary(justSaved.content)
     return (
       <div className="px-4 py-6">
         <div className="text-center mb-5">
@@ -775,7 +863,14 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
         {/* AI Summary */}
         {summary && summary.length > 0 && (
           <div className="mb-4">
-            <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">Quick Summary</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Quick Summary</p>
+              <button onClick={() => speak((justSaved.summary || []).join('. '), 'summary')}
+                className={`p-1.5 rounded-lg transition-all ${speakingTarget === 'summary' ? 'bg-indigo-100 text-indigo-600' : 'text-stone-400 hover:text-stone-600 hover:bg-stone-100'}`}
+                title={speakingTarget === 'summary' ? 'Stop reading' : 'Read summary aloud'}>
+                {speakingTarget === 'summary' ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+              </button>
+            </div>
             <div className="bg-white rounded-xl border border-stone-100 p-4 shadow-sm space-y-2">
               {summary.map((point, i) => (
                 <div key={i} className="flex items-start gap-2">
@@ -821,7 +916,15 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
         {/* Original entry collapsed */}
         <details className="bg-white rounded-xl border border-stone-100 p-4 shadow-sm mb-5">
           <summary className="text-xs font-semibold text-stone-500 uppercase tracking-wider cursor-pointer">Full Entry</summary>
-          <div className="mt-3 flex items-center gap-2 mb-2">
+          <div className="flex justify-end mt-2 mb-1">
+            <button onClick={() => speak(justSaved.content, 'entry')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${speakingTarget === 'entry' ? 'bg-indigo-100 text-indigo-600' : 'text-stone-400 hover:text-stone-600 hover:bg-stone-100'}`}
+              title={speakingTarget === 'entry' ? 'Stop reading' : 'Read entry aloud'}>
+              {speakingTarget === 'entry' ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
+              {speakingTarget === 'entry' ? 'Stop' : 'Read aloud'}
+            </button>
+          </div>
+          <div className="mt-1 flex items-center gap-2 mb-2">
             {justSaved.mood && <span className="text-lg">{MOODS.find(m => m.value === justSaved.mood)?.emoji}</span>}
             <span className="text-xs text-stone-600">{new Date(justSaved.createdAt).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
           </div>
@@ -867,6 +970,14 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
               <p className="text-xs text-red-500">Say "stop recording and save" or tap Stop</p>
             </div>
             <button onClick={stopVoice} className="px-4 py-2 bg-red-500 text-white text-xs font-bold rounded-lg">Stop</button>
+          </div>
+        )}
+
+        {/* AI transcript polishing indicator */}
+        {isCleaningTranscript && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-violet-50 rounded-xl border border-violet-100 mb-2">
+            <div className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+            <p className="text-xs text-violet-600 font-medium">✨ Polishing your entry...</p>
           </div>
         )}
 
