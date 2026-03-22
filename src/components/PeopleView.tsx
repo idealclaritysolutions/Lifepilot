@@ -299,19 +299,54 @@ function PersonEditForm({ person, onUpdate, onDone }: { person: Person; onUpdate
   const [name, setName] = useState(person.name)
   const [relationship, setRelationship] = useState(person.relationship)
   const [notes, setNotes] = useState(person.notes || '')
+  const [events, setEvents] = useState<LifeEvent[]>(person.events)
+  const [addingEvent, setAddingEvent] = useState(false)
 
   return (
     <div className="space-y-3 pt-2 border-t border-stone-100">
       <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Edit Details</p>
+
       <input value={name} onChange={e => setName(e.target.value)} placeholder="Name"
         className="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm text-stone-800" />
-      <input value={relationship} onChange={e => setRelationship(e.target.value)} placeholder="Relationship (e.g., Mom, Coworker)"
+      <input value={relationship} onChange={e => setRelationship(e.target.value)} placeholder="Relationship (e.g., Mom, Partner, Coworker)"
         className="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm text-stone-800" />
       <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes (interests, preferences, etc.)" rows={2}
         className="w-full px-3 py-2 rounded-xl border border-stone-200 text-sm text-stone-700 resize-none" />
+
+      {/* Important Dates */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Important Dates</p>
+          {!addingEvent && (
+            <button onClick={() => setAddingEvent(true)} className="text-xs text-rose-500 font-medium hover:text-rose-600">+ Add date</button>
+          )}
+        </div>
+
+        {events.length === 0 && !addingEvent && (
+          <p className="text-xs text-stone-400 italic">No dates yet — add a birthday, anniversary, and more</p>
+        )}
+
+        {events.map((event) => (
+          <div key={event.id} className="flex items-center gap-2 mb-1.5 bg-stone-50 rounded-lg px-3 py-2 text-xs">
+            <span>{EVENT_TYPES.find(t => t.value === event.type)?.label.split(' ')[0] || '📅'}</span>
+            <span className="flex-1 text-stone-600">{event.label} — {event.date}{event.year ? ` (${event.year})` : ''}</span>
+            <button onClick={() => setEvents(events.filter(e => e.id !== event.id))} className="text-stone-400 hover:text-red-500 transition-colors">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        ))}
+
+        {addingEvent && (
+          <AddEventForm
+            onAdd={(e) => { setEvents([...events, e]); setAddingEvent(false) }}
+            onCancel={() => setAddingEvent(false)}
+          />
+        )}
+      </div>
+
       <button onClick={() => {
         if (name.trim()) {
-          onUpdate({ name: name.trim(), relationship: relationship.trim() || person.relationship, notes: notes.trim() })
+          onUpdate({ name: name.trim(), relationship: relationship.trim() || person.relationship, notes: notes.trim(), events })
           onDone()
         }
       }} className="w-full py-2.5 rounded-xl bg-amber-500 text-white text-sm font-medium">

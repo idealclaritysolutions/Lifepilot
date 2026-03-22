@@ -535,9 +535,10 @@ function App() {
           name,
           relationship: 'Household',
           closeness: 'inner-circle' as const,
-          notes: 'Added from your household during setup',
+          notes: '',
           events: [],
           giftHistory: [],
+          createdAt: new Date().toISOString(),
         }))
       // Build personalized welcome message based on their energy drainers
       const drainers = profile.priorities || []
@@ -629,7 +630,28 @@ function App() {
   }, [])
 
   const updateProfile = useCallback((updates: Partial<UserProfile>) => {
-    setState(prev => ({ ...prev, profile: { ...prev.profile, ...updates } }))
+    setState(prev => {
+      const newProfile = { ...prev.profile, ...updates }
+      // If household changed, auto-add any new names to the People tab
+      let people = prev.people
+      if (updates.household) {
+        const existingNames = new Set(prev.people.map(p => p.name.toLowerCase()))
+        const newMembers: Person[] = updates.household
+          .filter(name => name.trim() && !existingNames.has(name.trim().toLowerCase()))
+          .map(name => ({
+            id: 'person-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+            name: name.trim(),
+            relationship: 'Household',
+            closeness: 'inner-circle' as const,
+            notes: '',
+            events: [],
+            giftHistory: [],
+            createdAt: new Date().toISOString(),
+          }))
+        if (newMembers.length > 0) people = [...prev.people, ...newMembers]
+      }
+      return { ...prev, profile: newProfile, people }
+    })
   }, [])
 
   const setUserLocation = useCallback((loc: UserLocation | null) => {
