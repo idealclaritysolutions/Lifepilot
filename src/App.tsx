@@ -27,6 +27,7 @@ export interface LifeItem {
   completedAt?: string
   eisenhower?: 'do' | 'schedule' | 'delegate' | 'eliminate'
   goalId?: string  // links this task to a goal
+  linkedHabitId?: string  // links this task to a daily habit
 }
 
 export interface UserProfile {
