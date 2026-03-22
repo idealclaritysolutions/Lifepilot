@@ -56,6 +56,9 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
   const [goalTitle, setGoalTitle] = useState('')
   const [goalDate, setGoalDate] = useState('')
   const [goalCat, setGoalCat] = useState<LifeItem['category']>('general')
+  const [linkingTaskId, setLinkingTaskId] = useState<string | null>(null)
+  const [linkingGoalId, setLinkingGoalId] = useState<string>('')
+  const [taskToAssign, setTaskToAssign] = useState<string>('')
 
   const todayStr = new Date().toISOString().split('T')[0]
   const now = new Date()
@@ -190,25 +193,46 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
                         const isOverdue = item.dueDate && item.dueDate < todayStr
                         const linkedGoal = item.goalId ? goals.find(gl => gl.id === item.goalId) : null
                         return (
-                          <div key={item.id} className="flex items-center gap-2.5 bg-white/80 rounded-xl px-3 py-2.5 mb-1.5 last:mb-0">
-                            <button onClick={() => updateItem(item.id, { status: 'done', completedAt: new Date().toISOString() })}
-                              className={`w-5 h-5 rounded-full flex items-center justify-center flex-none border-2 ${isOverdue ? 'border-red-400' : 'border-stone-300'} hover:border-emerald-400`} />
-                            <div className="flex-1 min-w-0">
-                              {editingItemId === item.id ? (
-                                <input value={editText} onChange={e => setEditText(e.target.value)} autoFocus
-                                  className="w-full text-[13px] text-stone-800 bg-white border border-amber-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                                  onKeyDown={e => { if (e.key === 'Enter') { updateItem(item.id, { text: editText }); setEditingItemId(null) } if (e.key === 'Escape') setEditingItemId(null) }}
-                                  onBlur={() => { updateItem(item.id, { text: editText }); setEditingItemId(null) }} />
-                              ) : (
-                                <p className="text-[13px] text-stone-800 leading-snug cursor-pointer" onClick={() => { setEditingItemId(item.id); setEditText(item.text) }}>{item.text}</p>
-                              )}
-                              <div className="flex items-center gap-1.5 mt-0.5">
-                                {isOverdue && <span className="text-[10px] text-red-500 font-semibold">Overdue</span>}
-                                {item.dueDate && !isOverdue && <span className="text-[10px] text-stone-400">{new Date(item.dueDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
-                                {linkedGoal && <span className="text-[9px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded font-medium">🎯 {linkedGoal.title.slice(0, 14)}</span>}
+                          <div key={item.id} className="bg-white/80 rounded-xl px-3 py-2.5 mb-1.5 last:mb-0">
+                            <div className="flex items-center gap-2.5">
+                              <button onClick={() => updateItem(item.id, { status: 'done', completedAt: new Date().toISOString() })}
+                                className={`w-5 h-5 rounded-full flex items-center justify-center flex-none border-2 ${isOverdue ? 'border-red-400' : 'border-stone-300'} hover:border-emerald-400`} />
+                              <div className="flex-1 min-w-0">
+                                {editingItemId === item.id ? (
+                                  <input value={editText} onChange={e => setEditText(e.target.value)} autoFocus
+                                    className="w-full text-[13px] text-stone-800 bg-white border border-amber-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                                    onKeyDown={e => { if (e.key === 'Enter') { updateItem(item.id, { text: editText }); setEditingItemId(null) } if (e.key === 'Escape') setEditingItemId(null) }}
+                                    onBlur={() => { updateItem(item.id, { text: editText }); setEditingItemId(null) }} />
+                                ) : (
+                                  <p className="text-[13px] text-stone-800 leading-snug cursor-pointer" onClick={() => { setEditingItemId(item.id); setEditText(item.text) }}>{item.text}</p>
+                                )}
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  {isOverdue && <span className="text-[10px] text-red-500 font-semibold">Overdue</span>}
+                                  {item.dueDate && !isOverdue && <span className="text-[10px] text-stone-400">{new Date(item.dueDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                                  {linkedGoal && <span className="text-[9px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded font-medium">🎯 {linkedGoal.title.slice(0, 14)}</span>}
+                                </div>
                               </div>
+                              {goals.filter(g => g.status === 'active').length > 0 && (
+                                <button onClick={() => { setLinkingTaskId(linkingTaskId === item.id ? null : item.id); setLinkingGoalId(item.goalId || '') }}
+                                  title="Assign to goal"
+                                  className={`p-1 flex-none ${item.goalId ? 'text-amber-400 hover:text-amber-600' : 'text-stone-300 hover:text-amber-400'}`}>
+                                  <Target className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              <button onClick={() => removeItem(item.id)} className="p-1 text-stone-300 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
                             </div>
-                            <button onClick={() => removeItem(item.id)} className="p-1 text-stone-300 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
+                            {linkingTaskId === item.id && (
+                              <div className="mt-2 flex gap-1.5">
+                                <select value={linkingGoalId} onChange={e => setLinkingGoalId(e.target.value)}
+                                  className="flex-1 text-xs border border-stone-200 rounded-lg px-2 py-1.5 bg-white">
+                                  <option value="">No goal (standalone)</option>
+                                  {goals.filter(g => g.status === 'active').map(g => <option key={g.id} value={g.id}>🎯 {g.title}</option>)}
+                                </select>
+                                <button onClick={() => { updateItem(item.id, { goalId: linkingGoalId || undefined } as any); setLinkingTaskId(null) }}
+                                  className="px-2.5 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-medium">Save</button>
+                                <button onClick={() => setLinkingTaskId(null)} className="px-2 py-1.5 rounded-lg bg-stone-100 text-stone-400 text-xs">✕</button>
+                              </div>
+                            )}
                           </div>
                         )
                       })}
@@ -402,6 +426,7 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
                               <span className={`text-xs flex-1 cursor-pointer ${t.status === 'done' ? 'text-stone-400 line-through' : 'text-stone-700'}`}
                                 onClick={() => { setEditingItemId(t.id); setEditText(t.text) }}>{t.text}</span>
                             )}
+                            <button onClick={() => updateItem(t.id, { goalId: undefined } as any)} title="Remove from goal" className="p-0.5 text-stone-200 hover:text-amber-400"><X className="w-2.5 h-2.5" /></button>
                             <button onClick={() => removeItem(t.id)} className="p-0.5 text-stone-300 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
                           </div>
                         ))}
@@ -424,7 +449,23 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
                       </div>
                     )}
                     {goalTasks.length === 0 && goalHabits.length === 0 && (
-                      <p className="text-xs text-stone-400 italic text-center py-3">Ask the AI to break this goal into tasks and habits</p>
+                      <p className="text-xs text-stone-400 italic text-center py-2">Ask the AI to break this goal into tasks and habits</p>
+                    )}
+                    {/* Assign an existing task to this goal */}
+                    {pending.filter(i => !i.goalId).length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-1.5">Link existing task</p>
+                        <div className="flex gap-1.5">
+                          <select value={taskToAssign} onChange={e => setTaskToAssign(e.target.value)}
+                            className="flex-1 text-xs border border-stone-200 rounded-lg px-2 py-1.5 bg-white">
+                            <option value="">Select a task…</option>
+                            {pending.filter(i => !i.goalId).map(t => <option key={t.id} value={t.id}>{t.text.slice(0, 45)}</option>)}
+                          </select>
+                          <button onClick={() => { if (taskToAssign) { updateItem(taskToAssign, { goalId: goal.id } as any); setTaskToAssign('') } }}
+                            disabled={!taskToAssign}
+                            className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-medium disabled:opacity-40">Add</button>
+                        </div>
+                      </div>
                     )}
                     {/* Edit goal title */}
                     <div className="pt-2 border-t border-black/5">
