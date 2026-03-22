@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { AppState, LifeItem, Goal, Habit } from '@/App'
-import { Check, Trash2, Target, Plus, ChevronDown, ChevronUp, AlertCircle, Clock, Sparkles, X } from 'lucide-react'
+import { Check, Trash2, Target, Plus, ChevronDown, ChevronUp, Sparkles, X, Pencil, CalendarDays } from 'lucide-react'
 
 interface Props {
   state: AppState
@@ -11,6 +11,9 @@ interface Props {
   updateGoal: (id: string, updates: Partial<Goal>) => void
   removeGoal: (id: string) => void
   toggleHabitDay?: (habitId: string, dateStr: string) => void
+  addHabit?: (habit: Habit) => void
+  updateHabit?: (id: string, updates: Partial<Habit>) => void
+  removeHabit?: (id: string) => void
 }
 
 const CATS: { key: LifeItem['category']; emoji: string; label: string; bg: string; border: string; text: string; gradient: string }[] = [
@@ -31,18 +34,20 @@ const EQ = [
   { key: 'eliminate' as const, label: 'Drop It', sub: 'Neither', emoji: '🗑️', bg: 'bg-stone-50', border: 'border-stone-200', headerBg: 'bg-gradient-to-r from-stone-400 to-stone-500' },
 ]
 
+const HABIT_EMOJIS = ['✨', '💪', '🧘', '📚', '🏃', '💧', '🥗', '😴', '🎯', '🧠', '🌿', '❤️']
+
 function getStreak(completions: string[]): number {
   let s = 0
   for (let i = 0; i < 90; i++) { const d = new Date(); d.setDate(d.getDate() - i); if (completions.includes(d.toISOString().split('T')[0])) s++; else if (i > 0) break }
   return s
 }
 
-export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, updateGoal, removeGoal, toggleHabitDay }: Props) {
+export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, updateGoal, removeGoal, toggleHabitDay, addHabit, updateHabit, removeHabit }: Props) {
   const [view, setView] = useState<'day' | 'priorities' | 'goals'>('day')
   const [showDone, setShowDone] = useState(false)
   const [expandedGoal, setExpandedGoal] = useState<string | null>(null)
   const [expandedHabit, setExpandedHabit] = useState<string | null>(null)
-  const [movingTask, setMovingTask] = useState<string | null>(null) // task being assigned in matrix
+  const [movingTask, setMovingTask] = useState<string | null>(null)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null)
@@ -56,9 +61,28 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
   const [goalTitle, setGoalTitle] = useState('')
   const [goalDate, setGoalDate] = useState('')
   const [goalCat, setGoalCat] = useState<LifeItem['category']>('general')
+  // Task linking (goal + habit + date panel)
   const [linkingTaskId, setLinkingTaskId] = useState<string | null>(null)
   const [linkingGoalId, setLinkingGoalId] = useState<string>('')
+  const [linkingTaskHabitId, setLinkingTaskHabitId] = useState<string>('')
   const [taskToAssign, setTaskToAssign] = useState<string>('')
+  // Task date editing
+  const [editingTaskDateId, setEditingTaskDateId] = useState<string | null>(null)
+  const [editTaskDate, setEditTaskDate] = useState('')
+  // Habit management
+  const [showAddHabit, setShowAddHabit] = useState(false)
+  const [newHabitName, setNewHabitName] = useState('')
+  const [newHabitEmoji, setNewHabitEmoji] = useState('✨')
+  const [newHabitFreq, setNewHabitFreq] = useState<Habit['frequency']>('daily')
+  const [newHabitGoalId, setNewHabitGoalId] = useState('')
+  const [editingHabitId, setEditingHabitId] = useState<string | null>(null)
+  const [editHabitName, setEditHabitName] = useState('')
+  const [editHabitEmoji, setEditHabitEmoji] = useState('')
+  // Habit-goal linking
+  const [linkingHabitId, setLinkingHabitId] = useState<string | null>(null)
+  const [linkingHabitGoalId, setLinkingHabitGoalId] = useState('')
+  // Collapsible categories
+  const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set())
 
   const todayStr = new Date().toISOString().split('T')[0]
   const now = new Date()
@@ -74,6 +98,77 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
     if (!newText.trim()) return
     addItem({ id: `item-${Date.now()}`, text: newText.trim(), category: newCat, status: 'pending', createdAt: new Date().toISOString(), snoozeCount: 0, dueDate: newDate || undefined, goalId: newGoalId || undefined } as any)
     setNewText(''); setNewDate(''); setNewGoalId(''); setShowAddTask(false)
+  }
+
+  const submitHabit = () => {
+    if (!newHabitName.trim()) return
+    const newHabit: Habit = {
+      id: `habit-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      name: newHabitName.trim(),
+      emoji: newHabitEmoji || '✨',
+      frequency: newHabitFreq,
+      completions: [],
+      createdAt: new Date().toISOString(),
+      streakBest: 0,
+    }
+    addHabit?.(newHabit)
+    if (newHabitGoalId) {
+      const g = goals.find(gl => gl.id === newHabitGoalId)
+      if (g) updateGoal(newHabitGoalId, { linkedHabitIds: [...(g.linkedHabitIds || []), newHabit.id] })
+    }
+    setNewHabitName(''); setNewHabitEmoji('✨'); setNewHabitFreq('daily'); setNewHabitGoalId(''); setShowAddHabit(false)
+  }
+
+  const saveHabitEdit = (habitId: string) => {
+    if (editHabitName.trim()) {
+      updateHabit?.(habitId, { name: editHabitName.trim(), emoji: editHabitEmoji || '✨' })
+    } else {
+      updateHabit?.(habitId, { emoji: editHabitEmoji || '✨' })
+    }
+    setEditingHabitId(null)
+  }
+
+  const saveHabitGoalLink = (habitId: string, newGoalId: string) => {
+    goals.forEach(g => {
+      if (g.linkedHabitIds?.includes(habitId)) {
+        updateGoal(g.id, { linkedHabitIds: g.linkedHabitIds.filter(id => id !== habitId) })
+      }
+    })
+    if (newGoalId) {
+      const g = goals.find(gl => gl.id === newGoalId)
+      if (g) updateGoal(newGoalId, { linkedHabitIds: [...(g.linkedHabitIds || []), habitId] })
+    }
+    setLinkingHabitId(null)
+  }
+
+  const toggleCat = (catKey: string) => {
+    setCollapsedCats(prev => {
+      const next = new Set(prev)
+      if (next.has(catKey)) next.delete(catKey)
+      else next.add(catKey)
+      return next
+    })
+  }
+
+  const openTaskLinkPanel = (item: LifeItem) => {
+    if (linkingTaskId === item.id) {
+      setLinkingTaskId(null)
+    } else {
+      setLinkingTaskId(item.id)
+      setLinkingGoalId(item.goalId || '')
+      setLinkingTaskHabitId((item as any).linkedHabitId || '')
+      setEditingTaskDateId(null)
+    }
+  }
+
+  const openTaskDatePanel = (item: LifeItem) => {
+    if (editingTaskDateId === item.id) {
+      setEditingTaskDateId(null)
+    } else {
+      setEditingTaskDateId(item.id)
+      setEditTaskDate(item.dueDate || '')
+      setLinkingTaskId(null)
+    }
   }
 
   // ═══════════════════════════
@@ -131,115 +226,293 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
             </div>
           )}
 
-          {/* Habits */}
-          {habits.length > 0 && (
-            <div className="bg-gradient-to-br from-amber-50/60 to-orange-50/40 rounded-2xl border border-amber-100/60 p-4 mb-4">
-              <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wider mb-2">Daily Habits</p>
-              {habits.map(h => {
-                const doneToday = h.completions.includes(todayStr)
-                const streak = getStreak(h.completions)
-                const isOpen = expandedHabit === h.id
-                return (
-                  <div key={h.id} className="mb-1">
-                    <div className="flex items-center gap-3 py-2">
-                      <button onClick={() => toggleHabitDay?.(h.id, todayStr)}
-                        className={`w-[22px] h-[22px] rounded-lg flex items-center justify-center flex-none transition-all ${doneToday ? 'bg-emerald-500 text-white' : 'border-2 border-stone-200 hover:border-emerald-400'}`}>
-                        {doneToday && <Check className="w-3 h-3" />}
-                      </button>
-                      <span className="text-sm">{h.emoji}</span>
-                      <button onClick={() => setExpandedHabit(isOpen ? null : h.id)} className={`text-[13px] flex-1 text-left ${doneToday ? 'text-stone-400 line-through' : 'text-stone-800'}`}>{h.name}</button>
-                      {streak >= 2 && <span className="text-[10px] font-bold text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">🔥 {streak}d</span>}
-                    </div>
-                    {isOpen && (() => {
-                      const cs = new Set(h.completions)
-                      const ew = new Date(now); ew.setDate(now.getDate() + (6 - now.getDay()))
-                      const sg = new Date(ew); sg.setDate(ew.getDate() - 34)
-                      const weeks: any[][] = []; const cr = new Date(sg)
-                      for (let w = 0; w < 5; w++) { const wk: any[] = []; for (let d = 0; d < 7; d++) { wk.push({ date: new Date(cr), ds: cr.toISOString().split('T')[0] }); cr.setDate(cr.getDate() + 1) } weeks.push(wk) }
-                      return (
-                        <div className="bg-stone-50 rounded-xl p-3 mb-2 ml-9">
-                          <div className="grid grid-cols-7 gap-0.5 mb-1">{['S','M','T','W','T','F','S'].map((d,i) => <div key={i} className="text-center text-[8px] font-semibold text-stone-400">{d}</div>)}</div>
-                          {weeks.map((wk,wi) => <div key={wi} className="grid grid-cols-7 gap-0.5 mb-0.5">{wk.map(({date,ds}: any) => {
-                            const dn = cs.has(ds); const it = ds === todayStr; const fu = date > now
-                            return <button key={ds} onClick={() => !fu && toggleHabitDay?.(h.id, ds)} disabled={fu}
-                              className={`aspect-square rounded flex items-center justify-center text-[9px] font-medium ${fu?'bg-stone-100 text-stone-300':dn?'bg-emerald-400 text-white':it?'bg-amber-100 text-amber-700 ring-1 ring-amber-300':'bg-white text-stone-400'}`}>{date.getDate()}</button>
-                          })}</div>)}
-                        </div>
-                      )
-                    })()}
-                  </div>
-                )
-              })}
+          {/* ─── Daily Habits ─── */}
+          <div className="bg-gradient-to-br from-amber-50/60 to-orange-50/40 rounded-2xl border border-amber-100/60 p-4 mb-4">
+            {/* Section header with Add button */}
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wider">Daily Habits</p>
+              <button onClick={() => { setShowAddHabit(!showAddHabit); setNewHabitName(''); setNewHabitEmoji('✨') }}
+                className="flex items-center gap-1 text-[10px] font-semibold text-amber-600 hover:text-amber-800 bg-amber-100 hover:bg-amber-200 px-2 py-1 rounded-lg transition-colors">
+                <Plus className="w-3 h-3" /> Add habit
+              </button>
             </div>
-          )}
 
-          {/* Category boxes */}
-          {!showDone && (() => {
-            const grouped = CATS.map(cat => ({ ...cat, items: pending.filter(i => i.category === cat.key) })).filter(g => g.items.length > 0)
-            const ungrouped = pending.filter(i => !CATS.some(c => c.key === i.category))
-            return grouped.length > 0 ? (
-              <div className="space-y-3">
-                {grouped.map(g => (
-                  <div key={g.key} className={`rounded-2xl border ${g.border} overflow-hidden`}>
-                    <div className={`bg-gradient-to-r ${g.gradient} px-4 py-2.5 flex items-center justify-between`}>
-                      <div className="flex items-center gap-2">
-                        <span className="text-white text-sm">{g.emoji}</span>
-                        <span className="text-white text-sm font-semibold">{g.label}</span>
-                      </div>
-                      <span className="text-white/80 text-xs font-medium">{g.items.length}</span>
-                    </div>
-                    <div className={`${g.bg} p-2`}>
-                      {g.items.map(item => {
-                        const isOverdue = item.dueDate && item.dueDate < todayStr
-                        const linkedGoal = item.goalId ? goals.find(gl => gl.id === item.goalId) : null
-                        return (
-                          <div key={item.id} className="bg-white/80 rounded-xl px-3 py-2.5 mb-1.5 last:mb-0">
-                            <div className="flex items-center gap-2.5">
-                              <button onClick={() => updateItem(item.id, { status: 'done', completedAt: new Date().toISOString() })}
-                                className={`w-5 h-5 rounded-full flex items-center justify-center flex-none border-2 ${isOverdue ? 'border-red-400' : 'border-stone-300'} hover:border-emerald-400`} />
-                              <div className="flex-1 min-w-0">
-                                {editingItemId === item.id ? (
-                                  <input value={editText} onChange={e => setEditText(e.target.value)} autoFocus
-                                    className="w-full text-[13px] text-stone-800 bg-white border border-amber-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                                    onKeyDown={e => { if (e.key === 'Enter') { updateItem(item.id, { text: editText }); setEditingItemId(null) } if (e.key === 'Escape') setEditingItemId(null) }}
-                                    onBlur={() => { updateItem(item.id, { text: editText }); setEditingItemId(null) }} />
-                                ) : (
-                                  <p className="text-[13px] text-stone-800 leading-snug cursor-pointer" onClick={() => { setEditingItemId(item.id); setEditText(item.text) }}>{item.text}</p>
-                                )}
-                                <div className="flex items-center gap-1.5 mt-0.5">
-                                  {isOverdue && <span className="text-[10px] text-red-500 font-semibold">Overdue</span>}
-                                  {item.dueDate && !isOverdue && <span className="text-[10px] text-stone-400">{new Date(item.dueDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
-                                  {linkedGoal && <span className="text-[9px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded font-medium">🎯 {linkedGoal.title.slice(0, 14)}</span>}
-                                </div>
-                              </div>
-                              {goals.filter(g => g.status === 'active').length > 0 && (
-                                <button onClick={() => { setLinkingTaskId(linkingTaskId === item.id ? null : item.id); setLinkingGoalId(item.goalId || '') }}
-                                  title="Assign to goal"
-                                  className={`p-1 flex-none ${item.goalId ? 'text-amber-400 hover:text-amber-600' : 'text-stone-300 hover:text-amber-400'}`}>
-                                  <Target className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                              <button onClick={() => removeItem(item.id)} className="p-1 text-stone-300 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
-                            </div>
-                            {linkingTaskId === item.id && (
-                              <div className="mt-2 flex gap-1.5">
-                                <select value={linkingGoalId} onChange={e => setLinkingGoalId(e.target.value)}
-                                  className="flex-1 text-xs border border-stone-200 rounded-lg px-2 py-1.5 bg-white">
-                                  <option value="">No goal (standalone)</option>
-                                  {goals.filter(g => g.status === 'active').map(g => <option key={g.id} value={g.id}>🎯 {g.title}</option>)}
-                                </select>
-                                <button onClick={() => { updateItem(item.id, { goalId: linkingGoalId || undefined } as any); setLinkingTaskId(null) }}
-                                  className="px-2.5 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-medium">Save</button>
-                                <button onClick={() => setLinkingTaskId(null)} className="px-2 py-1.5 rounded-lg bg-stone-100 text-stone-400 text-xs">✕</button>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
+            {/* Add habit form */}
+            {showAddHabit && (
+              <div className="bg-white rounded-xl border border-amber-200 p-3 mb-3 space-y-2">
+                <div className="flex gap-2">
+                  {/* Emoji picker */}
+                  <div className="relative">
+                    <select value={newHabitEmoji} onChange={e => setNewHabitEmoji(e.target.value)}
+                      className="text-lg border border-stone-200 rounded-lg px-1.5 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-amber-300 appearance-none w-12 text-center cursor-pointer">
+                      {HABIT_EMOJIS.map(e => <option key={e} value={e}>{e}</option>)}
+                    </select>
                   </div>
-                ))}
+                  <input value={newHabitName} onChange={e => setNewHabitName(e.target.value)} placeholder="Habit name…"
+                    className="flex-1 text-sm border border-stone-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-300" autoFocus
+                    onKeyDown={e => { if (e.key === 'Enter') submitHabit() }} />
+                </div>
+                <div className="flex gap-2">
+                  <select value={newHabitFreq} onChange={e => setNewHabitFreq(e.target.value as any)}
+                    className="flex-1 text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 bg-white">
+                    <option value="daily">Every day</option>
+                    <option value="weekdays">Weekdays</option>
+                    <option value="weekly">Weekly</option>
+                  </select>
+                  {goals.filter(g => g.status === 'active').length > 0 && (
+                    <select value={newHabitGoalId} onChange={e => setNewHabitGoalId(e.target.value)}
+                      className="flex-1 text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 bg-white">
+                      <option value="">No goal</option>
+                      {goals.filter(g => g.status === 'active').map(g => <option key={g.id} value={g.id}>🎯 {g.title.slice(0, 20)}</option>)}
+                    </select>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={submitHabit} className="flex-1 py-2 rounded-lg bg-amber-500 text-white text-xs font-semibold">Add Habit</button>
+                  <button onClick={() => setShowAddHabit(false)} className="px-3 py-2 rounded-lg bg-stone-100 text-stone-400 text-xs">Cancel</button>
+                </div>
               </div>
+            )}
+
+            {habits.length === 0 && !showAddHabit && (
+              <p className="text-xs text-amber-600/60 text-center py-2 italic">No habits yet — add one above or ask the AI</p>
+            )}
+
+            {/* Habit list */}
+            {habits.map(h => {
+              const doneToday = h.completions.includes(todayStr)
+              const streak = getStreak(h.completions)
+              const isOpen = expandedHabit === h.id
+              const habitGoal = goals.find(g => g.linkedHabitIds?.includes(h.id))
+              return (
+                <div key={h.id} className="mb-1">
+                  {/* Habit row */}
+                  <div className="flex items-center gap-3 py-2">
+                    <button onClick={() => toggleHabitDay?.(h.id, todayStr)}
+                      className={`w-[22px] h-[22px] rounded-lg flex items-center justify-center flex-none transition-all ${doneToday ? 'bg-emerald-500 text-white' : 'border-2 border-stone-200 hover:border-emerald-400'}`}>
+                      {doneToday && <Check className="w-3 h-3" />}
+                    </button>
+                    {editingHabitId !== h.id && <span className="text-sm">{h.emoji}</span>}
+
+                    {/* Habit name — editable or button to expand calendar */}
+                    {editingHabitId === h.id ? (
+                      <div className="flex-1 flex items-center gap-1.5">
+                        <span className="text-sm cursor-pointer" onClick={() => {
+                          const emojis = HABIT_EMOJIS
+                          const ci = emojis.indexOf(editHabitEmoji)
+                          setEditHabitEmoji(emojis[(ci + 1) % emojis.length])
+                        }}>{editHabitEmoji}</span>
+                        <input value={editHabitName} onChange={e => setEditHabitName(e.target.value)} autoFocus
+                          className="flex-1 text-[13px] bg-white border border-amber-300 rounded-lg px-2 py-1 focus:outline-none"
+                          onKeyDown={e => { if (e.key === 'Enter') saveHabitEdit(h.id); if (e.key === 'Escape') setEditingHabitId(null) }}
+                          onBlur={() => saveHabitEdit(h.id)} />
+                      </div>
+                    ) : (
+                      <button onClick={() => setExpandedHabit(isOpen ? null : h.id)}
+                        className={`text-[13px] flex-1 text-left ${doneToday ? 'text-stone-400 line-through' : 'text-stone-800'}`}>
+                        {h.name}
+                      </button>
+                    )}
+
+                    {/* Streak badge */}
+                    {streak >= 2 && <span className="text-[10px] font-bold text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">🔥 {streak}d</span>}
+
+                    {/* Goal link badge */}
+                    {habitGoal && linkingHabitId !== h.id && (
+                      <span className="text-[9px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded font-medium max-w-[64px] truncate">🎯 {habitGoal.title.slice(0, 10)}</span>
+                    )}
+
+                    {/* Action buttons */}
+                    {editingHabitId !== h.id && (
+                      <>
+                        {/* Edit button */}
+                        <button onClick={() => { setEditingHabitId(h.id); setEditHabitName(h.name); setEditHabitEmoji(h.emoji) }}
+                          className="p-1 text-stone-300 hover:text-stone-500 flex-none" title="Edit habit">
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                        {/* Goal link button */}
+                        <button onClick={() => {
+                          if (linkingHabitId === h.id) { setLinkingHabitId(null) }
+                          else { setLinkingHabitId(h.id); setLinkingHabitGoalId(habitGoal?.id || '') }
+                        }}
+                          className={`p-1 flex-none ${habitGoal ? 'text-amber-400 hover:text-amber-600' : 'text-stone-300 hover:text-amber-400'}`}
+                          title={habitGoal ? `Linked to: ${habitGoal.title}` : 'Link to goal'}>
+                          <Target className="w-3 h-3" />
+                        </button>
+                        {/* Delete button */}
+                        <button onClick={() => removeHabit?.(h.id)} className="p-1 text-stone-300 hover:text-red-400 flex-none"><Trash2 className="w-3 h-3" /></button>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Habit goal-link panel */}
+                  {linkingHabitId === h.id && (
+                    <div className="mb-2 ml-9 flex gap-1.5">
+                      <select value={linkingHabitGoalId} onChange={e => setLinkingHabitGoalId(e.target.value)}
+                        className="flex-1 text-xs border border-stone-200 rounded-lg px-2 py-1.5 bg-white">
+                        <option value="">Standalone (no goal)</option>
+                        {goals.filter(g => g.status === 'active').map(g => <option key={g.id} value={g.id}>🎯 {g.title}</option>)}
+                      </select>
+                      <button onClick={() => saveHabitGoalLink(h.id, linkingHabitGoalId)}
+                        className="px-2.5 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-medium">Save</button>
+                      <button onClick={() => setLinkingHabitId(null)} className="px-2 py-1.5 rounded-lg bg-stone-100 text-stone-400 text-xs">✕</button>
+                    </div>
+                  )}
+
+                  {/* Expanded calendar view */}
+                  {isOpen && editingHabitId !== h.id && (() => {
+                    const cs = new Set(h.completions)
+                    const ew = new Date(now); ew.setDate(now.getDate() + (6 - now.getDay()))
+                    const sg = new Date(ew); sg.setDate(ew.getDate() - 34)
+                    const weeks: any[][] = []; const cr = new Date(sg)
+                    for (let w = 0; w < 5; w++) { const wk: any[] = []; for (let d = 0; d < 7; d++) { wk.push({ date: new Date(cr), ds: cr.toISOString().split('T')[0] }); cr.setDate(cr.getDate() + 1) } weeks.push(wk) }
+                    return (
+                      <div className="bg-stone-50 rounded-xl p-3 mb-2 ml-9">
+                        <div className="grid grid-cols-7 gap-0.5 mb-1">{['S','M','T','W','T','F','S'].map((d,i) => <div key={i} className="text-center text-[8px] font-semibold text-stone-400">{d}</div>)}</div>
+                        {weeks.map((wk,wi) => <div key={wi} className="grid grid-cols-7 gap-0.5 mb-0.5">{wk.map(({date,ds}: any) => {
+                          const dn = cs.has(ds); const it = ds === todayStr; const fu = date > now
+                          return <button key={ds} onClick={() => !fu && toggleHabitDay?.(h.id, ds)} disabled={fu}
+                            className={`aspect-square rounded flex items-center justify-center text-[9px] font-medium ${fu?'bg-stone-100 text-stone-300':dn?'bg-emerald-400 text-white':it?'bg-amber-100 text-amber-700 ring-1 ring-amber-300':'bg-white text-stone-400'}`}>{date.getDate()}</button>
+                        })}</div>)}
+                      </div>
+                    )
+                  })()}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* ─── Tasks ─── */}
+          {!showDone && pending.length > 0 && (() => {
+            const grouped = CATS.map(cat => ({ ...cat, items: pending.filter(i => i.category === cat.key) })).filter(g => g.items.length > 0)
+            return grouped.length > 0 ? (
+              <>
+                {/* Tasks section header */}
+                <div className="flex items-center gap-2 mb-2 mt-1">
+                  <p className="text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Tasks</p>
+                  <div className="flex-1 h-px bg-stone-100" />
+                  <span className="text-[10px] text-stone-400 font-medium">{pending.length}</span>
+                </div>
+                <div className="space-y-3">
+                  {grouped.map(g => {
+                    const isCollapsed = collapsedCats.has(g.key)
+                    return (
+                      <div key={g.key} className={`rounded-2xl border ${g.border} overflow-hidden`}>
+                        {/* Collapsible header */}
+                        <button onClick={() => toggleCat(g.key)}
+                          className={`w-full bg-gradient-to-r ${g.gradient} px-4 py-2.5 flex items-center justify-between`}>
+                          <div className="flex items-center gap-2">
+                            <span className="text-white text-sm">{g.emoji}</span>
+                            <span className="text-white text-sm font-semibold">{g.label}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-white/80 text-xs font-medium">{g.items.length}</span>
+                            {isCollapsed
+                              ? <ChevronDown className="w-4 h-4 text-white/60" />
+                              : <ChevronUp className="w-4 h-4 text-white/60" />}
+                          </div>
+                        </button>
+
+                        {/* Items (hidden when collapsed) */}
+                        {!isCollapsed && (
+                          <div className={`${g.bg} p-2`}>
+                            {g.items.map(item => {
+                              const isOverdue = item.dueDate && item.dueDate < todayStr
+                              const linkedGoal = item.goalId ? goals.find(gl => gl.id === item.goalId) : null
+                              const linkedHabit = (item as any).linkedHabitId ? habits.find(h => h.id === (item as any).linkedHabitId) : null
+                              return (
+                                <div key={item.id} className="bg-white/80 rounded-xl px-3 py-2.5 mb-1.5 last:mb-0">
+                                  <div className="flex items-center gap-2.5">
+                                    <button onClick={() => updateItem(item.id, { status: 'done', completedAt: new Date().toISOString() })}
+                                      className={`w-5 h-5 rounded-full flex items-center justify-center flex-none border-2 ${isOverdue ? 'border-red-400' : 'border-stone-300'} hover:border-emerald-400`} />
+                                    <div className="flex-1 min-w-0">
+                                      {editingItemId === item.id ? (
+                                        <input value={editText} onChange={e => setEditText(e.target.value)} autoFocus
+                                          className="w-full text-[13px] text-stone-800 bg-white border border-amber-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                                          onKeyDown={e => { if (e.key === 'Enter') { updateItem(item.id, { text: editText }); setEditingItemId(null) } if (e.key === 'Escape') setEditingItemId(null) }}
+                                          onBlur={() => { updateItem(item.id, { text: editText }); setEditingItemId(null) }} />
+                                      ) : (
+                                        <p className="text-[13px] text-stone-800 leading-snug cursor-pointer" onClick={() => { setEditingItemId(item.id); setEditText(item.text) }}>{item.text}</p>
+                                      )}
+                                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                        {isOverdue && <span className="text-[10px] text-red-500 font-semibold">Overdue</span>}
+                                        {item.dueDate && !isOverdue && <span className="text-[10px] text-stone-400">{new Date(item.dueDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                                        {linkedGoal && <span className="text-[9px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded font-medium">🎯 {linkedGoal.title.slice(0, 14)}</span>}
+                                        {linkedHabit && <span className="text-[9px] bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded font-medium">{linkedHabit.emoji} {linkedHabit.name.slice(0, 12)}</span>}
+                                      </div>
+                                    </div>
+
+                                    {/* Date edit button */}
+                                    <button onClick={() => openTaskDatePanel(item)}
+                                      title="Edit due date"
+                                      className={`p-1 flex-none ${item.dueDate ? 'text-blue-400 hover:text-blue-600' : 'text-stone-300 hover:text-blue-400'}`}>
+                                      <CalendarDays className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    {/* Goal/habit link button */}
+                                    <button onClick={() => openTaskLinkPanel(item)}
+                                      title="Link to goal or habit"
+                                      className={`p-1 flex-none ${(item.goalId || (item as any).linkedHabitId) ? 'text-amber-400 hover:text-amber-600' : 'text-stone-300 hover:text-amber-400'}`}>
+                                      <Target className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    <button onClick={() => removeItem(item.id)} className="p-1 text-stone-300 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
+                                  </div>
+
+                                  {/* Date edit panel */}
+                                  {editingTaskDateId === item.id && (
+                                    <div className="mt-2 flex gap-1.5">
+                                      <input type="date" value={editTaskDate} onChange={e => setEditTaskDate(e.target.value)} autoFocus
+                                        className="flex-1 text-xs border border-stone-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                                      <button onClick={() => { updateItem(item.id, { dueDate: editTaskDate || undefined }); setEditingTaskDateId(null) }}
+                                        className="px-2.5 py-1.5 rounded-lg bg-blue-500 text-white text-xs font-medium">Save</button>
+                                      <button onClick={() => { updateItem(item.id, { dueDate: undefined }); setEditingTaskDateId(null) }}
+                                        className="px-2 py-1.5 rounded-lg bg-stone-100 text-stone-400 text-xs" title="Clear date">✕</button>
+                                    </div>
+                                  )}
+
+                                  {/* Goal + habit link panel */}
+                                  {linkingTaskId === item.id && (
+                                    <div className="mt-2 space-y-1.5">
+                                      {goals.filter(g => g.status === 'active').length > 0 && (
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-[10px] text-stone-400 w-10 shrink-0">Goal</span>
+                                          <select value={linkingGoalId} onChange={e => setLinkingGoalId(e.target.value)}
+                                            className="flex-1 text-xs border border-stone-200 rounded-lg px-2 py-1.5 bg-white">
+                                            <option value="">No goal</option>
+                                            {goals.filter(g => g.status === 'active').map(g => <option key={g.id} value={g.id}>🎯 {g.title}</option>)}
+                                          </select>
+                                        </div>
+                                      )}
+                                      {habits.length > 0 && (
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-[10px] text-stone-400 w-10 shrink-0">Habit</span>
+                                          <select value={linkingTaskHabitId} onChange={e => setLinkingTaskHabitId(e.target.value)}
+                                            className="flex-1 text-xs border border-stone-200 rounded-lg px-2 py-1.5 bg-white">
+                                            <option value="">No habit</option>
+                                            {habits.map(h => <option key={h.id} value={h.id}>{h.emoji} {h.name}</option>)}
+                                          </select>
+                                        </div>
+                                      )}
+                                      <div className="flex gap-1.5">
+                                        <button onClick={() => {
+                                          updateItem(item.id, { goalId: linkingGoalId || undefined, linkedHabitId: linkingTaskHabitId || undefined } as any)
+                                          setLinkingTaskId(null)
+                                        }} className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-medium">Save</button>
+                                        <button onClick={() => setLinkingTaskId(null)} className="px-2.5 py-1.5 rounded-lg bg-stone-100 text-stone-400 text-xs">✕</button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
             ) : null
           })()}
 
@@ -284,7 +557,6 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
                             className="w-4 h-4 rounded-full border-2 border-stone-300 flex-none hover:border-emerald-400" />
                           <span className="text-xs text-stone-700 flex-1 leading-snug">{item.text}</span>
                         </button>
-                        {/* Move buttons — appear when task is selected */}
                         {movingTask === item.id && (
                           <div className="flex gap-1 mt-1">
                             {EQ.filter(oq => oq.key !== q.key).map(oq => (
@@ -400,7 +672,7 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
                     <span className="text-white/90 text-sm font-bold">{pct}%</span>
                     {isOpen ? <ChevronUp className="w-4 h-4 text-white/60" /> : <ChevronDown className="w-4 h-4 text-white/60" />}
                   </div>
-                  {/* Progress bar below header */}
+                  {/* Progress bar */}
                   <div className="w-full h-1.5 bg-black/10">
                     <div className={`h-full transition-all duration-500 ${pct >= 100 ? 'bg-emerald-400' : 'bg-white/60'}`} style={{ width: `${Math.min(100, pct)}%` }} />
                   </div>
@@ -443,6 +715,9 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
                               <span className="text-xs">{h.emoji}</span>
                               <span className={`text-xs flex-1 ${dn ? 'text-stone-400' : 'text-stone-700'}`}>{h.name}</span>
                               {sk >= 2 && <span className="text-[10px] font-bold text-orange-500">🔥{sk}d</span>}
+                              {/* Unlink habit from this goal */}
+                              <button onClick={() => updateGoal(goal.id, { linkedHabitIds: goal.linkedHabitIds.filter(id => id !== h.id) })}
+                                title="Unlink from goal" className="p-0.5 text-stone-200 hover:text-amber-400"><X className="w-2.5 h-2.5" /></button>
                             </div>
                           )
                         })}

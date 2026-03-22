@@ -223,7 +223,7 @@ export function MainApp(props: Props) {
           <ChatView state={state} addItem={addItem} updateItem={updateItem} removeItem={removeItem} addChat={addChat} addPerson={addPerson} updatePerson={updatePerson} removePerson={removePerson} addPurchase={addPurchase} incrementMessageCount={incrementMessageCount} locationHook={locationHook} userId={user?.id} addHabit={addHabit} updateHabit={updateHabit} removeHabit={removeHabit} addJournalEntry={addJournalEntry} deleteJournalEntry={deleteJournalEntry} addGoal={addGoal} updateGoal={updateGoal} removeGoal={removeGoal} />
         </TabsContent>
         <TabsContent value="board" className="flex-1 overflow-auto m-0 data-[state=inactive]:hidden">
-          <LifeBoard state={state} addItem={addItem} updateItem={updateItem} removeItem={removeItem} addGoal={addGoal} updateGoal={updateGoal} removeGoal={removeGoal} toggleHabitDay={toggleHabitDay} />
+          <LifeBoard state={state} addItem={addItem} updateItem={updateItem} removeItem={removeItem} addGoal={addGoal} updateGoal={updateGoal} removeGoal={removeGoal} toggleHabitDay={toggleHabitDay} addHabit={addHabit} updateHabit={updateHabit} removeHabit={removeHabit} />
         </TabsContent>
         <TabsContent value="people" className="flex-1 overflow-auto m-0 data-[state=inactive]:hidden">
           <PeopleView state={state} addPerson={addPerson} updatePerson={updatePerson} removePerson={removePerson} />

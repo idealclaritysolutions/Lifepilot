@@ -498,7 +498,7 @@ export function ChatView(props: Props) {
         case 'add_habit_to_goal': {
           const p = action.payload
           const gid = p.goalId || (window as any).__lastGoalId
-          const habitId = `habit-${Date.now()}`
+          const habitId = `habit-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`
           props.addHabit?.({ id: habitId, name: p.name, emoji: p.emoji || '✅', frequency: p.frequency || 'daily', completions: [], createdAt: new Date().toISOString(), streakBest: 0, notes: '' })
           // Link habit to goal
           if (gid) {
