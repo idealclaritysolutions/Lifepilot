@@ -105,14 +105,13 @@ export function useDailyNudges(state: AppState) {
       "No pressure today. If you do just one thing, let it be something kind for yourself.",
     ]
 
-    // ─── 1. FEATURE/ENGAGEMENT NUDGE — every 4 hours while app is active ───
-    const lastFeature = getLastSent('feature')
-    const featureCooldown = 4 * 60 * 60 * 1000 // 4 hours
-    if (now - lastFeature > featureCooldown && currentHour >= 8 && currentHour <= 21) {
+    // ─── 1. FEATURE/ENGAGEMENT NUDGE — once per day ───
+    const lastFeature = getLastSent('feature-' + today)
+    if (!lastFeature && currentHour >= 8 && currentHour <= 21) {
       // If mood is low, use gentle nudges instead
       if (isTired) {
         showNotification('Life Pilot AI 💛', pick(GENTLE_NUDGES), 'feature-nudge')
-        markSent('feature')
+        markSent('feature-' + today)
       } else {
         const categories = Object.keys(NUDGE_MESSAGES) as (keyof typeof NUDGE_MESSAGES)[]
         const cat = categories[Math.floor(Math.random() * categories.length)]
@@ -126,7 +125,7 @@ export function useDailyNudges(state: AppState) {
           }
         }
         showNotification('Life Pilot AI ✦', msg, 'feature-nudge')
-        markSent('feature')
+        markSent('feature-' + today)
       }
     }
 

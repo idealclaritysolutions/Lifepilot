@@ -506,11 +506,15 @@ function App() {
 
   // Schedule reminders for items with due dates
   useEffect(() => {
-    state.items.forEach(item => {
-      if (item.status === 'pending' && item.dueDate && state.profile.notificationsEnabled) {
-        notifications.scheduleReminder(item)
-      }
-    })
+    // Cancel all first to prevent timer accumulation on every state change
+    state.items.forEach(item => notifications.cancelReminder(item.id))
+    if (state.profile.notificationsEnabled) {
+      state.items.forEach(item => {
+        if (item.status === 'pending' && item.dueDate) {
+          notifications.scheduleReminder(item)
+        }
+      })
+    }
   }, [state.items, state.profile.notificationsEnabled])
 
   const handleOnboardingComplete = useCallback((profile: UserProfile) => {

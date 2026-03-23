@@ -159,40 +159,41 @@ export default async function handler(req, res) {
         // Build all applicable nudges
         const allNudges = buildAllNudges(appState)
 
-        // Pick which nudge to send based on what we've already sent today
-        // Store sent nudge IDs in a rotation key
-        const rotationKey = `nudge-rotation-${sub.user_id}-${new Date().toISOString().split('T')[0]}`
-        let sentToday = []
-        try {
-          const { data: rotData } = await supabase
-            .from('push_subscriptions').select('subscription')
-            .eq('user_id', sub.user_id).single()
-          // Use a temp field to track rotation (stored in memory per cron run)
-        } catch {}
-
-        // Morning brief (8-10 AM) — full daily summary as push notification
-        const hourNow = new Date().getHours()
+        // Select nudge type based on UTC hour of this cron invocation:
+        // 13 UTC (~9 AM EST) = morning brief
+        // 18 UTC (~2 PM EST) = afternoon task focus
+        // 01 UTC (~9 PM EST) = evening habits/journal
+        const hourNow = new Date().getHours() // UTC on Vercel servers
         let nudge
-        if (hourNow >= 6 && hourNow <= 10) {
-          // Build a morning brief push notification
+
+        if (hourNow >= 6 && hourNow <= 14) {
+          // Morning brief
           const habits = appState?.habits || []
           const unchecked = habits.filter(h => !h.completions?.includes(todayStr))
           const pending = (appState?.items || []).filter(i => i.status === 'pending')
           const overdue = pending.filter(i => i.dueDate && new Date(i.dueDate) < new Date(todayStr))
           const dueToday = pending.filter(i => i.dueDate === todayStr)
-          
+
           let briefBody = `Good morning, ${name}! `
           if (overdue.length > 0) briefBody += `⚠️ ${overdue.length} overdue. `
           if (dueToday.length > 0) briefBody += `📋 ${dueToday.length} due today. `
           if (unchecked.length > 0) briefBody += `🎯 ${unchecked.length} habits waiting. `
           if (!overdue.length && !dueToday.length && !unchecked.length) briefBody += `Clean slate today! `
-          briefBody += `Open Life Pilot AI to see your full briefing.`
-          
-          nudge = { title: '☀️ Your Morning Brief', body: briefBody }
+          briefBody += `Tap to see your full briefing.`
+
+          nudge = { id: 'morning-brief', title: '☀️ Your Morning Brief', body: briefBody }
+        } else if (hourNow >= 15 && hourNow <= 21) {
+          // Afternoon: focus on tasks/overdue
+          const taskNudge = allNudges.find(n => n.id === 'overdue' || n.id === 'due-today' || n.id === 'pending')
+          nudge = taskNudge
+            ? { ...taskNudge, id: 'afternoon-task' }
+            : { id: 'afternoon-task', title: 'Life Pilot AI ✦', body: pick(GENERIC_NUDGES) }
         } else {
-          // Regular rotation for other times of day
-          const nudgeIndex = hourNow % allNudges.length
-          nudge = allNudges[nudgeIndex]
+          // Evening (0–5 UTC = 7–11 PM EST): habits and journal
+          const eveningNudge = allNudges.find(n => n.id === 'habits' || n.id === 'journal')
+          nudge = eveningNudge
+            ? { ...eveningNudge, id: 'evening-check' }
+            : { id: 'evening-check', title: 'Life Pilot AI 🌙', body: `${name}, how did today go? Take a moment to reflect before the day ends.` }
         }
 
         const payload = JSON.stringify({
