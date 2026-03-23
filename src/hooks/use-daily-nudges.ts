@@ -92,13 +92,17 @@ export function useDailyNudges(state: AppState) {
     // user opens the app, regardless of what time it is.
     
     const getLastSent = (key: string): number => {
-      // Check session Set first — synchronous, prevents race between concurrent checks
+      // 1. In-memory Set: prevents race between concurrent runNudgeCheck calls
       if (sentInSession.has(key)) return 1
+      // 2. sessionStorage: survives page refresh within same tab/PWA window
+      //    (not cleared by Android storage management or "clear cache")
+      try { if (sessionStorage.getItem('lp-nudge-' + key)) return 1 } catch {}
+      // 3. localStorage: survives across tabs and full app restarts
       try { return parseInt(localStorage.getItem('lp-nudge-' + key) || '0') } catch { return 0 }
     }
     const markSent = (key: string) => {
-      // Write to session Set immediately (synchronous) before localStorage
       sentInSession.add(key)
+      try { sessionStorage.setItem('lp-nudge-' + key, '1') } catch {}
       try { localStorage.setItem('lp-nudge-' + key, String(now)) } catch {}
     }
     

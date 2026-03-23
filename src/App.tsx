@@ -790,7 +790,9 @@ function App() {
         if (remindDays.includes(daysUntil)) {
           // DEDUP: Only fire this notification once per person per event per reminder day
           const dedupKey = `lp-bday-notif-${person.id}-${event.id}-${daysUntil}d-${todayMidnight.toDateString()}`
+          try { if (sessionStorage.getItem(dedupKey)) return } catch {} // survives refresh
           if (localStorage.getItem(dedupKey)) return // Already sent today for this reminder
+          try { sessionStorage.setItem(dedupKey, '1') } catch {}
           localStorage.setItem(dedupKey, '1')
 
           const yearInfo = event.year ? ` (${event.type === 'birthday' ? `turning ${thisYear - event.year}` : `${thisYear - event.year} years`})` : ''
