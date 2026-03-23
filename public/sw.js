@@ -1,6 +1,12 @@
 // Life Pilot AI Service Worker — Push notifications + scheduled reminders
 
-const CACHE_NAME = 'lifepilot-v1'
+const CACHE_NAME = 'lifepilot-v2'
+
+// Per-tag dedup: survives page refreshes (SW stays alive between reloads).
+// Maps notification tag → date string when last shown.
+// This is the last line of defence against duplicate notifications even if
+// the client-side localStorage/sentInSession checks somehow miss.
+const shownToday = new Map()
 
 self.addEventListener('install', (event) => {
   self.skipWaiting()
@@ -13,11 +19,18 @@ self.addEventListener('activate', (event) => {
 // Handle messages from the app
 self.addEventListener('message', (event) => {
   if (event.data.type === 'SHOW_NOTIFICATION') {
+    const tag = event.data.tag || ('lifepilot-' + Date.now())
+    const today = new Date().toDateString()
+
+    // Block duplicate shows: same tag already shown today
+    if (shownToday.get(tag) === today) return
+    shownToday.set(tag, today)
+
     self.registration.showNotification(event.data.title, {
       body: event.data.body,
       icon: '/icon-192.png',
       badge: '/icon-192.png',
-      tag: event.data.tag || 'lifepilot-' + Date.now(),
+      tag,
       requireInteraction: event.data.persistent || false,
       data: event.data.data || {},
       actions: [
