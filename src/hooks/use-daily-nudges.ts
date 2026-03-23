@@ -180,19 +180,20 @@ export function useDailyNudges(state: AppState) {
     }
 
     // ─── 5. SCHEDULE UPCOMING NUDGES VIA SERVICE WORKER ───
-    // This is the key improvement: when the user opens the app, we schedule
-    // the next few hours of nudges in the SW, so they fire even if the user
-    // closes the app (SW timers survive longer than main thread)
+    // Only schedule once per day (deduped) so repeated app opens/focuses
+    // don't queue multiple SW timers for the same notification.
     const hoursUntilEvening = Math.max(0, 19 - currentHour)
     if (hoursUntilEvening > 0 && hoursUntilEvening < 8) {
-      // Schedule evening journal nudge
+      // Schedule evening journal nudge — once per day only
       const todayEntries = state.journal.filter(e => new Date(e.createdAt).toDateString() === today)
-      if (todayEntries.length === 0 && !getLastSent('journal-' + today)) {
+      const alreadyScheduled = getLastSent('sw-journal-sched-' + today)
+      if (todayEntries.length === 0 && !getLastSent('journal-' + today) && !alreadyScheduled) {
         scheduleViaSW(
           "Your day had moments worth remembering. Take 60 seconds to write one down.",
           'sw-journal-' + today,
           hoursUntilEvening * 60 * 60 * 1000
         )
+        markSent('sw-journal-sched-' + today)
       }
     }
 
