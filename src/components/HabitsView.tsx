@@ -85,6 +85,34 @@ function getWeeklyRate(completions: string[], days: number = 7): number {
   return Math.round((recent.length / days) * 100)
 }
 
+function getWeeklyCompletionCount(completions: string[]): { done: number; total: number } {
+  const today = new Date()
+  const dayOfWeek = today.getDay() // 0 = Sunday
+  const completionSet = new Set(completions)
+  let done = 0
+  for (let i = 0; i <= dayOfWeek; i++) {
+    const d = new Date(today)
+    d.setDate(today.getDate() - dayOfWeek + i)
+    const ds = d.toISOString().split('T')[0]
+    if (completionSet.has(ds)) done++
+  }
+  return { done, total: dayOfWeek + 1 }
+}
+
+function getMonthlyCompletionCount(completions: string[]): { done: number; total: number } {
+  const today = new Date()
+  const year = today.getFullYear()
+  const month = today.getMonth()
+  const dayOfMonth = today.getDate()
+  const completionSet = new Set(completions)
+  let done = 0
+  for (let d = 1; d <= dayOfMonth; d++) {
+    const ds = new Date(year, month, d).toISOString().split('T')[0]
+    if (completionSet.has(ds)) done++
+  }
+  return { done, total: dayOfMonth }
+}
+
 export function HabitsView({ state, addHabit, toggleHabitDay, removeHabit, updateHabit }: Props) {
   const [showAdd, setShowAdd] = useState(false)
   const [newName, setNewName] = useState('')
@@ -343,6 +371,8 @@ export function HabitsView({ state, addHabit, toggleHabitDay, removeHabit, updat
                   const isDoneToday = habit.completions.includes(today)
                   const isExpanded = expandedHabit === habit.id
                   const rate = getWeeklyRate(habit.completions)
+                  const { done: weekDone, total: weekTotal } = getWeeklyCompletionCount(habit.completions)
+                  const { done: monthDone, total: monthTotal } = getMonthlyCompletionCount(habit.completions)
 
                   return (
                     <div key={habit.id} className="bg-white rounded-2xl border border-stone-100 p-4 shadow-sm mb-2">
@@ -351,11 +381,6 @@ export function HabitsView({ state, addHabit, toggleHabitDay, removeHabit, updat
                         <div className="flex-1">
                           <p className="text-base font-semibold text-stone-800">{habit.name}</p>
                           <div className="flex items-center gap-2 mt-0.5">
-                            {streak > 0 && (
-                              <span className="text-sm text-orange-600 flex items-center gap-1 font-medium">
-                                <Flame className="w-3.5 h-3.5" /> {streak}d
-                              </span>
-                            )}
                             {habit.targetValue && habit.targetUnit && (
                               <span className="text-xs text-blue-600 flex items-center gap-1">
                                 <Target className="w-3 h-3" /> {habit.targetValue} {habit.targetUnit}
@@ -396,6 +421,23 @@ export function HabitsView({ state, addHabit, toggleHabitDay, removeHabit, updat
                             </button>
                           )
                         })}
+                      </div>
+
+                      {/* Stats row — streaks + calendar link */}
+                      <div className="flex items-center gap-2.5 mt-2 text-[11px] text-stone-500">
+                        {streak > 0 && (
+                          <span className="flex items-center gap-1 text-orange-600 font-semibold">
+                            <Flame className="w-3 h-3" /> {streak}d
+                          </span>
+                        )}
+                        <span>{weekDone}/{weekTotal} this week</span>
+                        <span>{monthDone}/{monthTotal} this month</span>
+                        <button
+                          onClick={() => setViewMode('heatmap')}
+                          className="ml-auto flex items-center gap-1 text-amber-600 hover:text-amber-700 font-medium"
+                        >
+                          <Calendar className="w-3 h-3" /> 30 days
+                        </button>
                       </div>
 
                       {/* Expand for edit */}
