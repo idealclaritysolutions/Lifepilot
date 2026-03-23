@@ -322,7 +322,7 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
   const processedIdxRef = useRef(0)
   const restartTimeoutRef = useRef<any>(null)
   const [isCleaningTranscript, setIsCleaningTranscript] = useState(false)
-  const [speakingTarget, setSpeakingTarget] = useState<'summary' | 'entry' | null>(null)
+  const [speakingTarget, setSpeakingTarget] = useState<'summary' | 'entry' | 'reflection' | null>(null)
   const ttsRef = useRef<SpeechSynthesisUtterance | null>(null)
 
   useEffect(() => {
@@ -508,7 +508,7 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
   }
 
   // ─── TEXT-TO-SPEECH ──────────────────────────────────
-  const speak = (text: string, target: 'summary' | 'entry') => {
+  const speak = (text: string, target: 'summary' | 'entry' | 'reflection') => {
     if (!window.speechSynthesis) return
     if (speakingTarget === target) {
       window.speechSynthesis.cancel()
@@ -741,7 +741,14 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
         {/* AI Reflection */}
         {readingEntry.aiReflection && (
           <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl border border-indigo-100 p-5 mb-4">
-            <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-2">Reflection</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Reflection</p>
+              <button onClick={() => speak(readingEntry.aiReflection!, 'reflection')}
+                className={`p-1.5 rounded-lg transition-all ${speakingTarget === 'reflection' ? 'bg-indigo-200 text-indigo-700' : 'text-indigo-300 hover:text-indigo-600 hover:bg-indigo-100'}`}
+                title={speakingTarget === 'reflection' ? 'Stop reading' : 'Read reflection aloud'}>
+                {speakingTarget === 'reflection' ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+              </button>
+            </div>
             <p className="text-sm text-indigo-800 leading-relaxed italic">"{readingEntry.aiReflection}"</p>
           </div>
         )}
@@ -909,7 +916,16 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
 
         {/* AI Reflection */}
         <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl border border-indigo-100 p-5 mb-5">
-          <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-2">Reflection</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Reflection</p>
+            {justSaved.aiReflection && (
+              <button onClick={() => speak(justSaved.aiReflection!, 'reflection')}
+                className={`p-1.5 rounded-lg transition-all ${speakingTarget === 'reflection' ? 'bg-indigo-200 text-indigo-700' : 'text-indigo-300 hover:text-indigo-600 hover:bg-indigo-100'}`}
+                title={speakingTarget === 'reflection' ? 'Stop reading' : 'Read reflection aloud'}>
+                {speakingTarget === 'reflection' ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+              </button>
+            )}
+          </div>
           <p className="text-sm text-indigo-800 leading-relaxed italic">"{justSaved.aiReflection}"</p>
         </div>
 

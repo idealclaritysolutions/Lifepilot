@@ -201,10 +201,14 @@ function PersonCard({ person, expanded, editing, upcoming, onToggle, onEdit, onU
             <p className="text-sm font-semibold text-stone-800 truncate">{person.name}</p>
             <span className="text-xs text-stone-600">{person.relationship}</span>
           </div>
-          {nextEvent && (
-            <p className="text-xs text-stone-600 truncate">
-              {nextEvent.event.label} {nextEvent.daysUntil === 0 ? '🎉 today!' : nextEvent.daysUntil <= 7 ? `in ${nextEvent.daysUntil} days` : nextEvent.nextDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-            </p>
+          {upcoming.length > 0 && (
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+              {upcoming.slice(0, 3).map(({ event, daysUntil, nextDate }) => (
+                <p key={event.id} className="text-xs text-stone-600 truncate">
+                  {event.label} {daysUntil === 0 ? '🎉 today!' : daysUntil <= 7 ? `in ${daysUntil}d` : nextDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </p>
+              ))}
+            </div>
           )}
         </div>
         <ChevronRight className={`w-4 h-4 text-stone-500 transition-transform ${expanded ? 'rotate-90' : ''}`} />
