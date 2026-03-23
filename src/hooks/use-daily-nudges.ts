@@ -35,6 +35,11 @@ const NUDGE_MESSAGES = {
 
 const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)]
 
+// Module-level set: survives re-renders, prevents race conditions when
+// mount/visibilitychange/focus all trigger runNudgeCheck nearly simultaneously.
+// Acts as a synchronous guard before localStorage can be written.
+const sentInSession = new Set<string>()
+
 function showNotification(title: string, body: string, tag: string) {
   try {
     if (!('Notification' in window) || Notification.permission !== 'granted') return false
@@ -87,10 +92,14 @@ export function useDailyNudges(state: AppState) {
     // user opens the app, regardless of what time it is.
     
     const getLastSent = (key: string): number => {
+      // Check session Set first — synchronous, prevents race between concurrent checks
+      if (sentInSession.has(key)) return 1
       try { return parseInt(localStorage.getItem('lp-nudge-' + key) || '0') } catch { return 0 }
     }
     const markSent = (key: string) => {
-      localStorage.setItem('lp-nudge-' + key, String(now))
+      // Write to session Set immediately (synchronous) before localStorage
+      sentInSession.add(key)
+      try { localStorage.setItem('lp-nudge-' + key, String(now)) } catch {}
     }
     
     // ─── MOOD DETECTION from recent journal ───
