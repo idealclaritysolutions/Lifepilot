@@ -3,6 +3,7 @@
   "rewrites": [
     { "source": "/privacy.html", "destination": "/privacy.html" },
     { "source": "/terms.html", "destination": "/terms.html" },
+    { "source": "/delete-account.html", "destination": "/delete-account.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "crons": [
