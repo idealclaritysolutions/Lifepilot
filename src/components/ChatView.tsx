@@ -659,49 +659,31 @@ export function ChatView(props: Props) {
     if (!SR) return
 
     const rec = new SR()
-    // Use continuous=true to prevent cutoff. Deduplication handled by tracking last final text.
-    rec.continuous = true
+    const isAndroid = /android/i.test(navigator.userAgent)
+    rec.continuous = !isAndroid  // Android: false prevents duplication. iOS: true for smooth recording.
     rec.interimResults = true
     rec.lang = 'en-US'
-
-    let lastFinalText = ''
 
     rec.onstart = () => setIsListening(true)
 
     rec.onresult = (e: any) => {
-      let finals = ''
       let interim = ''
-      
-      // Build complete text from all results
-      for (let i = 0; i < e.results.length; i++) {
-        const transcript = e.results[i][0].transcript
+      for (let i = chatProcessedIdxRef.current; i < e.results.length; i++) {
         if (e.results[i].isFinal) {
-          finals += transcript
+          const transcript = e.results[i][0].transcript.trim()
+          if (!transcript) { chatProcessedIdxRef.current = i + 1; continue }
+          const fp = transcript.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim()
+          if (fp && !chatSeenFinalsRef.current.has(fp)) {
+            chatSeenFinalsRef.current.add(fp)
+            chatFinalSegmentsRef.current.push(transcript)
+          }
+          chatProcessedIdxRef.current = i + 1
         } else {
-          interim += transcript
+          interim = e.results[i][0].transcript
         }
       }
-      
-      // Only update if we have new content (prevents duplicates)
-      const newFinal = finals.trim()
-      if (newFinal && newFinal !== lastFinalText) {
-        // Check if this is an extension of previous text or completely new
-        if (newFinal.startsWith(lastFinalText)) {
-          // Extension - just update
-          lastFinalText = newFinal
-        } else if (lastFinalText && !newFinal.includes(lastFinalText)) {
-          // Completely new segment - append to what we have
-          chatFinalSegmentsRef.current.push(newFinal)
-          lastFinalText = newFinal
-        } else {
-          lastFinalText = newFinal
-        }
-      }
-      
-      // Display: accumulated segments + current final + interim
-      const accumulated = chatFinalSegmentsRef.current.join(' ')
-      const current = lastFinalText || ''
-      const display = (accumulated ? accumulated + ' ' : '') + current + (interim ? ' ' + interim : '')
+      const display = chatFinalSegmentsRef.current.join(' ') + (interim ? ' ' + interim : '')
+      // Smart punctuation: capitalize first letter, add period at end
       let cleaned = display.trim()
       if (cleaned) cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
       setInput(cleaned)
@@ -709,16 +691,23 @@ export function ChatView(props: Props) {
 
     rec.onerror = (e: any) => {
       if (e.error === 'no-speech' || e.error === 'aborted') return
+      console.warn('Chat voice error:', e.error)
     }
 
     rec.onend = () => {
-      // With continuous=true, onend only fires when user stops or error occurs
-      // If user didn't stop, restart
       if (!chatStoppedByUserRef.current) {
-        chatRestartTimeoutRef.current = setTimeout(() => {
-          if (!chatStoppedByUserRef.current) launchChatRecognition()
-          else setIsListening(false)
-        }, 50)
+        const isAndroid = /android/i.test(navigator.userAgent)
+        if (isAndroid) {
+          // Android: stop cleanly. Text stays in input. User taps mic to continue or send.
+          setIsListening(false)
+        } else {
+          // iOS: restart seamlessly
+          chatProcessedIdxRef.current = 0
+          chatRestartTimeoutRef.current = setTimeout(() => {
+            if (!chatStoppedByUserRef.current) launchChatRecognition()
+            else setIsListening(false)
+          }, 500)
+        }
       } else {
         setIsListening(false)
       }
