@@ -62,6 +62,9 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
   const [editText, setEditText] = useState('')
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null)
   const [editGoalText, setEditGoalText] = useState('')
+  const [editGoalDate, setEditGoalDate] = useState('')
+  const [editGoalCat, setEditGoalCat] = useState<LifeItem['category']>('general')
+  const [editGoalDesc, setEditGoalDesc] = useState('')
   const [showAddTask, setShowAddTask] = useState(false)
   const [showAddGoal, setShowAddGoal] = useState(false)
   const [newText, setNewText] = useState('')
@@ -841,19 +844,46 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
                         </div>
                       </div>
                     )}
-                    {/* Edit goal title */}
+                    {/* Edit goal */}
                     <div className="pt-2 border-t border-black/5">
                       {editingGoalId === goal.id ? (
-                        <div className="flex gap-2 mb-2">
+                        <div className="space-y-2 mb-2">
                           <input value={editGoalText} onChange={e => setEditGoalText(e.target.value)} autoFocus
-                            className="flex-1 text-xs border border-amber-300 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                            onKeyDown={e => { if (e.key === 'Enter') { updateGoal(goal.id, { title: editGoalText }); setEditingGoalId(null) } if (e.key === 'Escape') setEditingGoalId(null) }} />
-                          <button onClick={() => { updateGoal(goal.id, { title: editGoalText }); setEditingGoalId(null) }} className="px-3 py-2 rounded-lg bg-amber-500 text-white text-xs font-medium">Save</button>
-                          <button onClick={() => setEditingGoalId(null)} className="px-2 py-2 rounded-lg bg-stone-100 text-stone-400 text-xs">✕</button>
+                            placeholder="Goal title"
+                            className="w-full text-xs border border-amber-300 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-amber-300" />
+                          <input value={editGoalDesc} onChange={e => setEditGoalDesc(e.target.value)}
+                            placeholder="Description (optional)"
+                            className="w-full text-xs border border-stone-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-amber-200" />
+                          <div className="flex gap-2">
+                            <input type="date" value={editGoalDate} onChange={e => setEditGoalDate(e.target.value)}
+                              className="flex-1 text-xs border border-stone-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-amber-200" />
+                            <select value={editGoalCat} onChange={e => setEditGoalCat(e.target.value as LifeItem['category'])}
+                              className="flex-1 text-xs border border-stone-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-amber-200">
+                              {CATS.map(c => <option key={c.key} value={c.key}>{c.emoji} {c.label}</option>)}
+                            </select>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => {
+                              if (!editGoalText.trim()) return
+                              updateGoal(goal.id, {
+                                title: editGoalText.trim(),
+                                description: editGoalDesc || undefined,
+                                targetDate: editGoalDate || undefined,
+                                category: editGoalCat,
+                              })
+                              setEditingGoalId(null)
+                            }} className="flex-1 py-2 rounded-lg bg-amber-500 text-white text-xs font-semibold">Save</button>
+                            <button onClick={() => setEditingGoalId(null)} className="px-3 py-2 rounded-lg bg-stone-100 text-stone-400 text-xs">Cancel</button>
+                          </div>
                         </div>
                       ) : (
-                        <button onClick={() => { setEditingGoalId(goal.id); setEditGoalText(goal.title) }}
-                          className="text-xs text-stone-500 hover:text-amber-600 mb-2">✏️ Edit goal title</button>
+                        <button onClick={() => {
+                          setEditingGoalId(goal.id)
+                          setEditGoalText(goal.title)
+                          setEditGoalDesc(goal.description || '')
+                          setEditGoalDate(goal.targetDate || '')
+                          setEditGoalCat(goal.category)
+                        }} className="text-xs text-stone-500 hover:text-amber-600 mb-2">Edit goal</button>
                       )}
                     </div>
                     <div className="flex gap-2">
