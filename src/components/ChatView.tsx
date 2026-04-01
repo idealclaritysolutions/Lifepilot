@@ -688,24 +688,42 @@ export function ChatView(props: Props) {
     }
 
     rec.onerror = (e: any) => {
+      console.log('[v0] Chat voice error:', e.error)
       if (e.error === 'no-speech' || e.error === 'aborted') return
       console.warn('Chat voice error:', e.error)
     }
 
     rec.onend = () => {
+      console.log('[v0] Chat rec.onend fired, stoppedByUser:', chatStoppedByUserRef.current)
       if (!chatStoppedByUserRef.current) {
-        // Restart with minimal delay (10ms) to prevent word cutoff during restart gap
+        // Restart after brief delay - Android needs ~150ms between sessions
         chatRestartTimeoutRef.current = setTimeout(() => {
-          if (!chatStoppedByUserRef.current) launchChatRecognition()
-          else setIsListening(false)
-        }, 10)
+          console.log('[v0] Attempting restart, stoppedByUser:', chatStoppedByUserRef.current)
+          if (!chatStoppedByUserRef.current) {
+            try {
+              launchChatRecognition()
+              console.log('[v0] Restart successful')
+            } catch (err) {
+              console.log('[v0] Restart failed:', err)
+              setIsListening(false)
+            }
+          } else {
+            setIsListening(false)
+          }
+        }, 150)
       } else {
         setIsListening(false)
       }
     }
 
     recognitionRef.current = rec
-    try { rec.start() } catch { setIsListening(false) }
+    try { 
+      rec.start() 
+      console.log('[v0] rec.start() called successfully')
+    } catch (err) { 
+      console.log('[v0] rec.start() failed:', err)
+      setIsListening(false) 
+    }
   }
 
   const toggleVoice = () => {
