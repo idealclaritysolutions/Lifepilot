@@ -710,7 +710,13 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
                 ))}
               </div>
             ) : (
-              <div className="text-center py-4"><p className="text-xs text-stone-400">All tasks are sorted! 🎉</p></div>
+              <div className="text-center py-4">
+                {pending.length === 0 ? (
+                  <p className="text-xs text-stone-400">No tasks yet. Add some tasks to start prioritizing!</p>
+                ) : (
+                  <p className="text-xs text-stone-400">All tasks are sorted!</p>
+                )}
+              </div>
             )
           })()}
         </>
