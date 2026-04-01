@@ -7,7 +7,7 @@ export function uid(): string {
 // ─── ACTION TYPES ──────────────────────────────────────────────────
 
 export interface AIAction {
-  type: 'add_item' | 'update_item' | 'complete_item' | 'remove_item' | 'snooze_item' | 'add_multiple_items' | 'clear_completed' | 'add_person' | 'update_person' | 'remove_person' | 'add_event_to_person' | 'set_timer' | 'add_to_shared_list' | 'web_search' | 'add_habit' | 'complete_habit' | 'remove_habit' | 'update_habit' | 'add_journal' | 'delete_journal' | 'set_eisenhower' | 'add_goal' | 'update_goal' | 'remove_goal' | 'add_task_to_goal' | 'add_habit_to_goal' | 'complete_goal'
+  type: 'add_item' | 'update_item' | 'complete_item' | 'remove_item' | 'snooze_item' | 'add_multiple_items' | 'clear_completed' | 'add_person' | 'update_person' | 'remove_person' | 'add_event_to_person' | 'set_timer' | 'add_to_shared_list' | 'create_shared_list' | 'web_search' | 'add_habit' | 'complete_habit' | 'remove_habit' | 'update_habit' | 'add_journal' | 'delete_journal' | 'set_eisenhower' | 'add_goal' | 'update_goal' | 'remove_goal' | 'add_task_to_goal' | 'add_habit_to_goal' | 'complete_goal'
   payload: any
 }
 
@@ -418,6 +418,13 @@ Present this warmly and end with something like: "I'd love to help you get the m
 - NEVER say "I can't set reminders" — creating a board item with a due date IS a reminder.
 
 ═══ SHARED LISTS ═══
+You CAN create shared lists for the user. When they ask to create a shared list, use create_shared_list immediately.
+
+create_shared_list: {"type":"create_shared_list","payload":{"name":"List Name"}}
+- Creates a new shared list — the sharing link will be shown in the action card below your message
+- In your message, tell them: "I've created your shared list! The sharing link is in the action card below — tap it to copy and send to anyone you want to collaborate with."
+- If they also asked to add items to the new list, you CAN add them in the same request once the list is created
+
 ${sharedLists && sharedLists.length > 0 ? `The user has these shared lists:
 ${sharedLists.map(l => `- "${l.name}" (id: ${l.id})`).join('\n')}
 
@@ -583,12 +590,19 @@ JOURNAL INTELLIGENCE:
 - The user can dictate journal entries through the chatbot
 
 SHARED LIST INTELLIGENCE:
+- If the user wants to CREATE a new shared list, use create_shared_list immediately. After creating, ALWAYS display the sharing link (https://lifepilot.app/share?code=XXXXXX) so they can invite others.
 - When the user finds or browses something (a product, recipe, place, idea), proactively ask: "Want me to add this to one of your shared lists, or your private board?"
 - If they say "add to shared list" or "add to [list name]", match the name to the correct householdId and use add_to_shared_list
 - They can add to MULTIPLE lists at once — create separate add_to_shared_list actions for each
 - If they browse a place or product, include the link in the action payload
 - If they say "shared list" without specifying which one, show them their options and ask which one(s)
-` : 'No shared lists yet. If the user asks about shared/family lists, tell them they can create one from the 👥 icon in the top menu.'}
+- If the user asks to create a list AND add items to it, first include create_shared_list action, then include add_to_shared_list actions with householdId set to "NEW" — the app will automatically use the newly created list's ID
+` : `No shared lists yet. If the user asks about shared/family lists, you can create one for them using create_shared_list.
+
+create_shared_list: {"type":"create_shared_list","payload":{"name":"List Name"}}
+- Creates a new shared list — the sharing link will be shown in the action card below your message
+- In your message, tell them: "I've created your shared list! The sharing link is in the action card below — tap it to copy and send to anyone you want to collaborate with."
+- If they ask to add items too, acknowledge that they can add items after the list is created`}
 `
 }
 

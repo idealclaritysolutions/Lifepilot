@@ -6,7 +6,7 @@ import { hasFeature } from '@/App'
 import { generateAIResponse, detectCategory, uid, QUICK_ACTIONS, type AIAction } from '@/lib/ai-engine'
 import { useDocumentUpload } from '@/hooks/use-document-upload'
 import { useCalendar } from '@/hooks/use-calendar'
-import { getMyHouseholds, addSharedItem, type HouseholdInfo } from '@/lib/supabase'
+import { getMyHouseholds, addSharedItem, createHousehold, type HouseholdInfo } from '@/lib/supabase'
 import { Send, Sparkles, Mic, MicOff, Paperclip, Calendar, MapPin, Loader2, Lock } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -65,6 +65,7 @@ export function ChatView(props: Props) {
   // Execute AI actions
   const executeActions = async (actions: AIAction[]) => {
     const log: string[] = []
+    let newlyCreatedListId: string | null = null // Track if a new shared list was created in this batch
 
     for (const action of actions) {
       switch (action.type) {
@@ -314,9 +315,13 @@ export function ChatView(props: Props) {
         }
         case 'add_to_shared_list': {
           const sl = action.payload
-          if (sl.householdId && sl.text && userId) {
+          // Use the newly created list ID if the AI used a placeholder like "NEW" or if householdId is missing
+          const targetListId = (sl.householdId === 'NEW' || !sl.householdId) && newlyCreatedListId 
+            ? newlyCreatedListId 
+            : sl.householdId
+          if (targetListId && sl.text && userId) {
             const result = await addSharedItem({
-              household_id: sl.householdId,
+              household_id: targetListId,
               text: sl.text,
               category: 'grocery',
               checked: false,
@@ -325,8 +330,27 @@ export function ChatView(props: Props) {
               link: sl.link || undefined,
             })
             if (result) {
-              const listName = sharedListsRef.current.find(h => h.id === sl.householdId)?.name || 'shared list'
+              const listName = sharedListsRef.current.find(h => h.id === targetListId)?.name || 'shared list'
               log.push(`📋 Added "${sl.text}" to ${listName}`)
+            }
+          }
+          break
+        }
+        case 'create_shared_list': {
+          const payload = action.payload
+          if (payload.name && userId) {
+            const result = await createHousehold(userId, payload.name.trim())
+            if (result) {
+              // Store the new list ID so subsequent add_to_shared_list actions can use it
+              newlyCreatedListId = result.id
+              // Refresh the shared lists cache
+              const updatedHouseholds = await getMyHouseholds(userId)
+              sharedListsRef.current = updatedHouseholds
+              // Store the new list info for the AI response to use
+              const shareLink = `https://lifepilot.app/share?code=${result.shareCode}`
+              log.push(`📋 Created shared list "${payload.name}" | Share link: ${shareLink}`)
+            } else {
+              log.push(`⚠️ Could not create shared list "${payload.name}"`)
             }
           }
           break
@@ -988,11 +1012,37 @@ export function ChatView(props: Props) {
               <div className="flex justify-start">
                 <div className="max-w-[85%] rounded-2xl px-4 py-3 bg-amber-50 border border-amber-200 shadow-sm">
                   <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-1.5">Actions taken</p>
-                  {actionLog.map((log, i) => (
-                    <div key={i} className="text-[13px] text-amber-800 leading-relaxed flex items-start gap-2">
-                      <span>{log}</span>
-                    </div>
-                  ))}
+                  {actionLog.map((logEntry, i) => {
+                    // Parse share links and make them clickable
+                    const shareMatch = logEntry.match(/(https:\/\/lifepilot\.app\/share\?code=\w+)/)
+                    if (shareMatch) {
+                      const parts = logEntry.split(shareMatch[1])
+                      return (
+                        <div key={i} className="text-[13px] text-amber-800 leading-relaxed flex flex-wrap items-start gap-1">
+                          <span>{parts[0]}</span>
+                          <a 
+                            href={shareMatch[1]} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-amber-600 underline font-medium hover:text-amber-700"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              navigator.clipboard.writeText(shareMatch[1])
+                              toast.success('Share link copied!')
+                            }}
+                          >
+                            {shareMatch[1]}
+                          </a>
+                          <span>{parts[1] || ''}</span>
+                        </div>
+                      )
+                    }
+                    return (
+                      <div key={i} className="text-[13px] text-amber-800 leading-relaxed flex items-start gap-2">
+                        <span>{logEntry}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}
