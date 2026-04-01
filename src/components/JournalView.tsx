@@ -446,24 +446,42 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
     }
 
     rec.onerror = (e: any) => {
+      console.log('[v0] Journal voice error:', e.error)
       if (e.error === 'no-speech' || e.error === 'aborted') return
       console.warn('Voice error:', e.error)
     }
 
     rec.onend = () => {
+      console.log('[v0] Journal rec.onend fired, stoppedByUser:', stoppedByUserRef.current)
       if (!stoppedByUserRef.current) {
-        // Restart with minimal delay (10ms) to prevent word cutoff during restart gap
+        // Restart after brief delay - Android needs ~150ms between sessions
         restartTimeoutRef.current = setTimeout(() => {
-          if (!stoppedByUserRef.current) launchRecognition()
-          else setIsListening(false)
-        }, 10)
+          console.log('[v0] Journal attempting restart, stoppedByUser:', stoppedByUserRef.current)
+          if (!stoppedByUserRef.current) {
+            try {
+              launchRecognition()
+              console.log('[v0] Journal restart successful')
+            } catch (err) {
+              console.log('[v0] Journal restart failed:', err)
+              setIsListening(false)
+            }
+          } else {
+            setIsListening(false)
+          }
+        }, 150)
       } else {
         setIsListening(false)
       }
     }
 
     recognitionRef.current = rec
-    try { rec.start() } catch { setIsListening(false) }
+    try { 
+      rec.start() 
+      console.log('[v0] Journal rec.start() called successfully')
+    } catch (err) { 
+      console.log('[v0] Journal rec.start() failed:', err)
+      setIsListening(false) 
+    }
   }
 
   const startVoice = () => {
