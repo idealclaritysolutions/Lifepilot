@@ -27,6 +27,16 @@ const CATS: { key: LifeItem['category']; emoji: string; label: string; bg: strin
   { key: 'general', emoji: '📋', label: 'General', bg: 'bg-stone-50', border: 'border-stone-200', text: 'text-stone-600', gradient: 'from-stone-400 to-stone-500' },
 ]
 
+const HABIT_CATEGORIES: { id: Habit['category']; label: string; emoji: string }[] = [
+  { id: 'morning', label: 'Morning', emoji: '🌅' },
+  { id: 'health', label: 'Health', emoji: '❤️' },
+  { id: 'fitness', label: 'Fitness', emoji: '💪' },
+  { id: 'mindfulness', label: 'Mindful', emoji: '🧘' },
+  { id: 'learning', label: 'Learning', emoji: '📚' },
+  { id: 'evening', label: 'Evening', emoji: '🌙' },
+  { id: 'other', label: 'Other', emoji: '✨' },
+]
+
 const EQ = [
   { key: 'do' as const, label: 'Do First', sub: 'Urgent & Important', emoji: '🔥', bg: 'bg-red-50', border: 'border-red-200', headerBg: 'bg-gradient-to-r from-red-500 to-rose-500' },
   { key: 'schedule' as const, label: 'Schedule', sub: 'Important, Not Urgent', emoji: '📅', bg: 'bg-blue-50', border: 'border-blue-200', headerBg: 'bg-gradient-to-r from-blue-500 to-indigo-500' },
@@ -79,6 +89,11 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
   const [editingHabitId, setEditingHabitId] = useState<string | null>(null)
   const [editHabitName, setEditHabitName] = useState('')
   const [editHabitEmoji, setEditHabitEmoji] = useState('')
+  const [editHabitFreq, setEditHabitFreq] = useState<Habit['frequency']>('daily')
+  const [editHabitCategory, setEditHabitCategory] = useState<Habit['category']>('other')
+  const [editHabitReminder, setEditHabitReminder] = useState('')
+  const [editHabitTarget, setEditHabitTarget] = useState('')
+  const [editHabitUnit, setEditHabitUnit] = useState('')
   // Habit-goal linking
   const [linkingHabitId, setLinkingHabitId] = useState<string | null>(null)
   const [linkingHabitGoalId, setLinkingHabitGoalId] = useState('')
@@ -121,11 +136,18 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
   }
 
   const saveHabitEdit = (habitId: string) => {
-    if (editHabitName.trim()) {
-      updateHabit?.(habitId, { name: editHabitName.trim(), emoji: editHabitEmoji || '✨' })
-    } else {
-      updateHabit?.(habitId, { emoji: editHabitEmoji || '✨' })
+    const updates: Partial<Habit> = {
+      emoji: editHabitEmoji || '✨',
+      frequency: editHabitFreq,
+      category: editHabitCategory,
+      reminderTime: editHabitReminder || undefined,
+      targetValue: editHabitTarget ? Number(editHabitTarget) : undefined,
+      targetUnit: editHabitUnit || undefined,
     }
+    if (editHabitName.trim()) {
+      updates.name = editHabitName.trim()
+    }
+    updateHabit?.(habitId, updates)
     setEditingHabitId(null)
   }
 
@@ -285,14 +307,19 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
                     {editingHabitId !== h.id && (
                       <>
                         {/* Edit button */}
-                        <button onClick={() => {
-                          setEditingHabitId(editingHabitId === h.id ? null : h.id)
-                          setEditHabitName(h.name)
-                          setEditHabitEmoji(h.emoji)
-                          setShowAddHabit(false)
-                          setLinkingHabitId(null)
-                        }}
-                          className={`p-1 flex-none ${editingHabitId === h.id ? 'text-amber-500' : 'text-stone-300 hover:text-stone-500'}`} title="Edit habit">
+<button onClick={() => {
+                    setEditingHabitId(editingHabitId === h.id ? null : h.id)
+                    setEditHabitName(h.name)
+                    setEditHabitEmoji(h.emoji)
+                    setEditHabitFreq(h.frequency || 'daily')
+                    setEditHabitCategory(h.category || 'other')
+                    setEditHabitReminder(h.reminderTime || '')
+                    setEditHabitTarget(h.targetValue?.toString() || '')
+                    setEditHabitUnit(h.targetUnit || '')
+                    setShowAddHabit(false)
+                    setLinkingHabitId(null)
+                  }}
+                    className={`p-1 flex-none ${editingHabitId === h.id ? 'text-amber-500' : 'text-stone-300 hover:text-stone-500'}`} title="Edit habit">
                           <Pencil className="w-3 h-3" />
                         </button>
                         {/* Goal link button */}
@@ -312,7 +339,8 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
 
                   {/* Habit edit panel */}
                   {editingHabitId === h.id && (
-                    <div className="mb-2 ml-9 bg-white rounded-xl border border-amber-200 p-2.5 space-y-2">
+                    <div className="mb-2 ml-9 bg-white rounded-xl border border-amber-200 p-3 space-y-3">
+                      {/* Name & Emoji */}
                       <div className="flex gap-2">
                         <select value={editHabitEmoji} onChange={e => setEditHabitEmoji(e.target.value)}
                           className="text-lg border border-stone-200 rounded-lg px-1.5 py-1 bg-white focus:outline-none w-12 text-center">
@@ -321,8 +349,53 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
                         <input value={editHabitName} onChange={e => setEditHabitName(e.target.value)}
                           className="flex-1 text-sm border border-stone-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-300"
                           placeholder="Habit name…"
-                          onKeyDown={e => { if (e.key === 'Enter') saveHabitEdit(h.id); if (e.key === 'Escape') setEditingHabitId(null) }} />
+                          onKeyDown={e => { if (e.key === 'Escape') setEditingHabitId(null) }} />
                       </div>
+                      
+                      {/* Category */}
+                      <div>
+                        <p className="text-[10px] text-stone-500 mb-1">Category</p>
+                        <div className="flex flex-wrap gap-1">
+                          {HABIT_CATEGORIES.map(cat => (
+                            <button key={cat.id} onClick={() => setEditHabitCategory(cat.id)}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-medium ${editHabitCategory === cat.id ? 'bg-amber-100 text-amber-800 ring-1 ring-amber-300' : 'bg-stone-50 text-stone-600'}`}>
+                              {cat.emoji} {cat.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* Frequency */}
+                      <div>
+                        <p className="text-[10px] text-stone-500 mb-1">Frequency</p>
+                        <div className="flex gap-1">
+                          {(['daily', 'weekdays', 'weekly'] as const).map(f => (
+                            <button key={f} onClick={() => setEditHabitFreq(f)}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-medium ${editHabitFreq === f ? 'bg-amber-100 text-amber-800 ring-1 ring-amber-300' : 'bg-stone-50 text-stone-600'}`}>
+                              {f.charAt(0).toUpperCase() + f.slice(1)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* Target & Reminder */}
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <p className="text-[10px] text-stone-500 mb-1">Target (optional)</p>
+                          <div className="flex gap-1">
+                            <input value={editHabitTarget} onChange={e => setEditHabitTarget(e.target.value)} type="number" placeholder="8"
+                              className="w-12 px-1.5 py-1 rounded-lg border border-stone-200 text-xs text-center" />
+                            <input value={editHabitUnit} onChange={e => setEditHabitUnit(e.target.value)} placeholder="glasses"
+                              className="flex-1 px-2 py-1 rounded-lg border border-stone-200 text-xs" />
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-stone-500 mb-1">Reminder</p>
+                          <input value={editHabitReminder} onChange={e => setEditHabitReminder(e.target.value)} type="time"
+                            className="px-2 py-1 rounded-lg border border-stone-200 text-xs" />
+                        </div>
+                      </div>
+                      
                       <div className="flex gap-1.5">
                         <button onClick={() => saveHabitEdit(h.id)}
                           className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold">Save</button>

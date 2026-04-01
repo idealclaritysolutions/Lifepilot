@@ -7,7 +7,7 @@ export function uid(): string {
 // ─── ACTION TYPES ──────────────────────────────────────────────────
 
 export interface AIAction {
-  type: 'add_item' | 'update_item' | 'complete_item' | 'remove_item' | 'snooze_item' | 'add_multiple_items' | 'clear_completed' | 'add_person' | 'update_person' | 'remove_person' | 'add_event_to_person' | 'set_timer' | 'add_to_shared_list' | 'create_shared_list' | 'web_search' | 'add_habit' | 'complete_habit' | 'remove_habit' | 'update_habit' | 'add_journal' | 'delete_journal' | 'set_eisenhower' | 'add_goal' | 'update_goal' | 'remove_goal' | 'add_task_to_goal' | 'add_habit_to_goal' | 'complete_goal'
+  type: 'add_item' | 'update_item' | 'complete_item' | 'remove_item' | 'snooze_item' | 'add_multiple_items' | 'clear_completed' | 'add_person' | 'update_person' | 'remove_person' | 'add_event_to_person' | 'set_timer' | 'add_to_shared_list' | 'create_shared_list' | 'web_search' | 'add_habit' | 'complete_habit' | 'remove_habit' | 'update_habit' | 'add_journal' | 'delete_journal' | 'set_eisenhower' | 'add_goal' | 'update_goal' | 'remove_goal' | 'add_task_to_goal' | 'add_habit_to_goal' | 'link_task_to_goal' | 'link_habit_to_goal' | 'complete_goal'
   payload: any
 }
 
@@ -438,14 +438,17 @@ add_journal: {"type":"add_journal","payload":{"content":"...","mood":"great|good
 set_eisenhower: {"type":"set_eisenhower","payload":{"itemId":"...","quadrant":"do|schedule|delegate|eliminate"}}
 
 HABIT INTELLIGENCE:
+You CAN create habits for the user! When they ask to start a new routine, use add_habit immediately.
 - "I want to start meditating every day" → add_habit with name="Meditate", emoji="🧘", category="mindfulness", frequency="daily"
+- "Create a habit for reading" → add_habit with name="Read", emoji="📖", category="learning", frequency="daily"
 - "I did my workout" or "completed my run" → complete_habit with the matching habit name
 - "Add a habit to drink 8 glasses of water" → add_habit with name="Drink water", emoji="💧", category="health", frequency="daily"
 - If the user mentions doing something from their habits list, proactively mark it complete
-- If the user talks about a new routine they want to build, suggest creating a habit for it
+- If the user talks about a new routine they want to build, CREATE the habit for them with add_habit
 - "Delete/remove the meditation habit" → remove_habit
 - "Change my reading habit to 3 times a week" → update_habit
-- You can see their streaks — celebrate milestones! ("Amazing — 14 day streak on meditation! 🔥")
+- "Link my reading habit to my education goal" → link_habit_to_goal
+- You can see their streaks — celebrate milestones! ("Amazing — 14 day streak on meditation!")
 - If a habit has been unchecked for days, gently mention it without being pushy
 
 FOCUS TIMER INTELLIGENCE:
@@ -484,6 +487,8 @@ update_goal: {"type":"update_goal","payload":{"goalId":"goal-xxx","updates":{"ti
 remove_goal: {"type":"remove_goal","payload":{"goalId":"goal-xxx"}}
 add_task_to_goal: {"type":"add_task_to_goal","payload":{"goalId":"goal-xxx","text":"Download Duolingo","category":"general","dueDate":"2026-03-18"}}
 add_habit_to_goal: {"type":"add_habit_to_goal","payload":{"goalId":"goal-xxx","name":"Practice Spanish","emoji":"🇪🇸","frequency":"daily"}}
+link_task_to_goal: {"type":"link_task_to_goal","payload":{"taskId":"item-xxx","goalId":"goal-xxx"}}
+link_habit_to_goal: {"type":"link_habit_to_goal","payload":{"habitId":"habit-xxx","goalId":"goal-xxx"}}
 complete_goal: {"type":"complete_goal","payload":{"goalId":"goal-xxx"}}
 
 MODIFYING EXISTING DATA:
@@ -503,6 +508,12 @@ delete_journal: {"type":"delete_journal","payload":{"id":"journal-xxx"}}
 - When the user says "delete the person X" or "remove X from my people", find the person ID and use remove_person
 - When the user says "delete my journal entry about X", find the entry and use delete_journal
 - Always confirm before deleting: "I'll remove your goal 'Learn Spanish'. Want me to go ahead?"
+
+LINKING EXISTING ITEMS:
+- When the user says "link my task X to my goal Y", use link_task_to_goal with the task ID and goal ID
+- When the user says "connect my habit X to my goal Y", use link_habit_to_goal with the habit ID and goal ID
+- When the user says "add my existing task to the fitness goal", find the task and goal IDs and use link_task_to_goal
+- When the user says "this habit should be part of my reading goal", use link_habit_to_goal
 
 When creating a goal from conversation:
 1. First create the goal with add_goal

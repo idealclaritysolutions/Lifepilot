@@ -359,6 +359,7 @@ export function ChatView(props: Props) {
         }
         case 'add_habit': {
           const h = action.payload
+          console.log('[v0] add_habit action received:', h)
           if (h.name) {
             const newHabit = {
               id: 'habit-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
@@ -370,8 +371,13 @@ export function ChatView(props: Props) {
               createdAt: new Date().toISOString(),
               streakBest: 0,
             }
-            addHabit(newHabit)
-            log.push(`✅ Created habit: ${h.emoji || '⭐'} ${h.name}`)
+            console.log('[v0] Creating habit:', newHabit)
+            if (addHabit) {
+              addHabit(newHabit)
+              log.push(`✅ Created habit: ${h.emoji || '⭐'} ${h.name}`)
+            } else {
+              console.log('[v0] addHabit function is undefined!')
+            }
           }
           break
         }
@@ -513,27 +519,71 @@ export function ChatView(props: Props) {
         }
         case 'add_task_to_goal': {
           const p = action.payload
+          console.log('[v0] add_task_to_goal action received:', p)
           const gid = p.goalId || (window as any).__lastGoalId
+          console.log('[v0] Using goal ID:', gid)
           if (gid) {
             const taskId = `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
             addItem({ id: taskId, text: p.text, category: p.category || 'general', status: 'pending', createdAt: new Date().toISOString(), snoozeCount: 0, goalId: gid, dueDate: p.dueDate } as any)
             log.push(`📋 Task added to goal: ${p.text}`)
+          } else {
+            console.log('[v0] No goal ID found for add_task_to_goal')
           }
           break
         }
         case 'add_habit_to_goal': {
           const p = action.payload
+          console.log('[v0] add_habit_to_goal action received:', p)
           const gid = p.goalId || (window as any).__lastGoalId
+          console.log('[v0] Using goal ID:', gid)
           const habitId = `habit-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`
-          props.addHabit?.({ id: habitId, name: p.name, emoji: p.emoji || '✅', frequency: p.frequency || 'daily', completions: [], createdAt: new Date().toISOString(), streakBest: 0, notes: '' })
-          // Link habit to goal
-          if (gid) {
-            const goal = state.goals?.find(g => g.id === gid)
-            if (goal) {
-              props.updateGoal?.(gid, { linkedHabitIds: [...(goal.linkedHabitIds || []), habitId] })
+          if (props.addHabit) {
+            props.addHabit({ id: habitId, name: p.name, emoji: p.emoji || '✅', frequency: p.frequency || 'daily', completions: [], createdAt: new Date().toISOString(), streakBest: 0, notes: '' })
+            // Link habit to goal
+            if (gid) {
+              const goal = state.goals?.find(g => g.id === gid)
+              if (goal && props.updateGoal) {
+                props.updateGoal(gid, { linkedHabitIds: [...(goal.linkedHabitIds || []), habitId] })
+                log.push(`🔁 Habit "${p.name}" created and linked to goal`)
+              } else {
+                log.push(`🔁 Habit "${p.name}" created (not linked - goal not found)`)
+              }
+            } else {
+              log.push(`🔁 Habit "${p.name}" created (standalone)`)
+            }
+          } else {
+            console.log('[v0] addHabit function is undefined!')
+          }
+          break
+        }
+        case 'link_task_to_goal': {
+          const p = action.payload
+          console.log('[v0] link_task_to_goal action received:', p)
+          if (p.taskId && p.goalId) {
+            // Find the task and update its goalId
+            const task = state.items.find(i => i.id === p.taskId || i.text.toLowerCase().includes((p.taskName || '').toLowerCase()))
+            if (task) {
+              updateItem(task.id, { goalId: p.goalId })
+              log.push(`🔗 Linked task "${task.text}" to goal`)
+            } else {
+              console.log('[v0] Task not found for linking')
             }
           }
-          log.push(`🔁 Habit created: ${p.name}`)
+          break
+        }
+        case 'link_habit_to_goal': {
+          const p = action.payload
+          console.log('[v0] link_habit_to_goal action received:', p)
+          if (p.habitId && p.goalId) {
+            const goal = state.goals?.find(g => g.id === p.goalId)
+            const habit = state.habits.find(h => h.id === p.habitId || h.name.toLowerCase().includes((p.habitName || '').toLowerCase()))
+            if (goal && habit && props.updateGoal) {
+              props.updateGoal(p.goalId, { linkedHabitIds: [...(goal.linkedHabitIds || []), habit.id] })
+              log.push(`🔗 Linked habit "${habit.name}" to goal "${goal.title}"`)
+            } else {
+              console.log('[v0] Goal or habit not found for linking')
+            }
+          }
           break
         }
         case 'complete_goal': {
