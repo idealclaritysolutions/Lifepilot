@@ -415,73 +415,73 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
     if (!SR) return
 
     const rec = new SR()
-    rec.continuous = false
+    // Use continuous=true to prevent cutoff. Deduplication handled by tracking last final text.
+    rec.continuous = true
     rec.interimResults = true
     rec.lang = 'en-US'
+
+    let lastFinalText = ''
 
     rec.onstart = () => setIsListening(true)
 
     rec.onresult = (e: any) => {
+      let finals = ''
       let interim = ''
-      for (let i = processedIdxRef.current; i < e.results.length; i++) {
+      
+      // Build complete text from all results
+      for (let i = 0; i < e.results.length; i++) {
+        const transcript = e.results[i][0].transcript
         if (e.results[i].isFinal) {
-          const transcript = cleanSegmentInstant(e.results[i][0].transcript.trim())
-          if (!transcript) { processedIdxRef.current = i + 1; continue }
-          const fp = transcript.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim()
-          if (fp && !seenFinalsRef.current.has(fp)) {
-            seenFinalsRef.current.add(fp)
-            finalSegmentsRef.current.push(transcript)
-          }
-          processedIdxRef.current = i + 1
-          
-          if (checkVoiceCommand(buildDisplayText())) {
-            doStopAndSave()
-            return
-          }
+          finals += transcript
         } else {
-          interim = e.results[i][0].transcript
+          interim += transcript
         }
       }
-      setContent(buildDisplayText(interim))
+      
+      // Only update if we have new content (prevents duplicates)
+      const newFinal = cleanSegmentInstant(finals.trim())
+      if (newFinal && newFinal !== lastFinalText) {
+        // Check if this is an extension of previous text or completely new
+        if (newFinal.startsWith(lastFinalText)) {
+          lastFinalText = newFinal
+        } else if (lastFinalText && !newFinal.includes(lastFinalText)) {
+          finalSegmentsRef.current.push(newFinal)
+          lastFinalText = newFinal
+        } else {
+          lastFinalText = newFinal
+        }
+      }
+      
+      // Build display text
+      const accumulated = finalSegmentsRef.current.join(' ')
+      const current = lastFinalText || ''
+      const displayText = (accumulated ? accumulated + ' ' : '') + current + (interim ? ' ' + interim : '')
+      setContent(buildDisplayText(displayText.trim()))
+      
+      // Check for voice commands
+      if (checkVoiceCommand(buildDisplayText(displayText.trim()))) {
+        doStopAndSave()
+        return
+      }
     }
 
     rec.onerror = (e: any) => {
-      console.log('[v0] Journal voice error:', e.error)
       if (e.error === 'no-speech' || e.error === 'aborted') return
-      console.warn('Voice error:', e.error)
     }
 
     rec.onend = () => {
-      console.log('[v0] Journal rec.onend fired, stoppedByUser:', stoppedByUserRef.current)
       if (!stoppedByUserRef.current) {
-        // Restart after brief delay - Android needs ~150ms between sessions
         restartTimeoutRef.current = setTimeout(() => {
-          console.log('[v0] Journal attempting restart, stoppedByUser:', stoppedByUserRef.current)
-          if (!stoppedByUserRef.current) {
-            try {
-              launchRecognition()
-              console.log('[v0] Journal restart successful')
-            } catch (err) {
-              console.log('[v0] Journal restart failed:', err)
-              setIsListening(false)
-            }
-          } else {
-            setIsListening(false)
-          }
-        }, 150)
+          if (!stoppedByUserRef.current) launchRecognition()
+          else setIsListening(false)
+        }, 50)
       } else {
         setIsListening(false)
       }
     }
 
     recognitionRef.current = rec
-    try { 
-      rec.start() 
-      console.log('[v0] Journal rec.start() called successfully')
-    } catch (err) { 
-      console.log('[v0] Journal rec.start() failed:', err)
-      setIsListening(false) 
-    }
+    try { rec.start() } catch { setIsListening(false) }
   }
 
   const startVoice = () => {

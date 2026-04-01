@@ -659,71 +659,73 @@ export function ChatView(props: Props) {
     if (!SR) return
 
     const rec = new SR()
-    rec.continuous = false
+    // Use continuous=true to prevent cutoff. Deduplication handled by tracking last final text.
+    rec.continuous = true
     rec.interimResults = true
     rec.lang = 'en-US'
+
+    let lastFinalText = ''
 
     rec.onstart = () => setIsListening(true)
 
     rec.onresult = (e: any) => {
+      let finals = ''
       let interim = ''
-      for (let i = chatProcessedIdxRef.current; i < e.results.length; i++) {
+      
+      // Build complete text from all results
+      for (let i = 0; i < e.results.length; i++) {
+        const transcript = e.results[i][0].transcript
         if (e.results[i].isFinal) {
-          const transcript = e.results[i][0].transcript.trim()
-          if (!transcript) { chatProcessedIdxRef.current = i + 1; continue }
-          const fp = transcript.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim()
-          if (fp && !chatSeenFinalsRef.current.has(fp)) {
-            chatSeenFinalsRef.current.add(fp)
-            chatFinalSegmentsRef.current.push(transcript)
-          }
-          chatProcessedIdxRef.current = i + 1
+          finals += transcript
         } else {
-          interim = e.results[i][0].transcript
+          interim += transcript
         }
       }
-      const display = chatFinalSegmentsRef.current.join(' ') + (interim ? ' ' + interim : '')
+      
+      // Only update if we have new content (prevents duplicates)
+      const newFinal = finals.trim()
+      if (newFinal && newFinal !== lastFinalText) {
+        // Check if this is an extension of previous text or completely new
+        if (newFinal.startsWith(lastFinalText)) {
+          // Extension - just update
+          lastFinalText = newFinal
+        } else if (lastFinalText && !newFinal.includes(lastFinalText)) {
+          // Completely new segment - append to what we have
+          chatFinalSegmentsRef.current.push(newFinal)
+          lastFinalText = newFinal
+        } else {
+          lastFinalText = newFinal
+        }
+      }
+      
+      // Display: accumulated segments + current final + interim
+      const accumulated = chatFinalSegmentsRef.current.join(' ')
+      const current = lastFinalText || ''
+      const display = (accumulated ? accumulated + ' ' : '') + current + (interim ? ' ' + interim : '')
       let cleaned = display.trim()
       if (cleaned) cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
       setInput(cleaned)
     }
 
     rec.onerror = (e: any) => {
-      console.log('[v0] Chat voice error:', e.error)
       if (e.error === 'no-speech' || e.error === 'aborted') return
-      console.warn('Chat voice error:', e.error)
     }
 
     rec.onend = () => {
-      console.log('[v0] Chat rec.onend fired, stoppedByUser:', chatStoppedByUserRef.current)
+      // With continuous=true, onend only fires when user stops or error occurs
+      // If user didn't stop, restart
       if (!chatStoppedByUserRef.current) {
-        // Restart after brief delay - Android needs ~150ms between sessions
         chatRestartTimeoutRef.current = setTimeout(() => {
-          console.log('[v0] Attempting restart, stoppedByUser:', chatStoppedByUserRef.current)
-          if (!chatStoppedByUserRef.current) {
-            try {
-              launchChatRecognition()
-              console.log('[v0] Restart successful')
-            } catch (err) {
-              console.log('[v0] Restart failed:', err)
-              setIsListening(false)
-            }
-          } else {
-            setIsListening(false)
-          }
-        }, 150)
+          if (!chatStoppedByUserRef.current) launchChatRecognition()
+          else setIsListening(false)
+        }, 50)
       } else {
         setIsListening(false)
       }
     }
 
     recognitionRef.current = rec
-    try { 
-      rec.start() 
-      console.log('[v0] rec.start() called successfully')
-    } catch (err) { 
-      console.log('[v0] rec.start() failed:', err)
-      setIsListening(false) 
-    }
+    try { rec.start() } catch { setIsListening(false) }
   }
 
   const toggleVoice = () => {
