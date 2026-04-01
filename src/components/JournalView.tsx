@@ -452,11 +452,11 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
 
     rec.onend = () => {
       if (!stoppedByUserRef.current) {
-        // Immediately restart to keep listening without cutoff
+        // Restart with minimal delay (10ms) to prevent word cutoff during restart gap
         restartTimeoutRef.current = setTimeout(() => {
           if (!stoppedByUserRef.current) launchRecognition()
           else setIsListening(false)
-        }, 100)
+        }, 10)
       } else {
         setIsListening(false)
       }

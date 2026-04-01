@@ -694,11 +694,11 @@ export function ChatView(props: Props) {
 
     rec.onend = () => {
       if (!chatStoppedByUserRef.current) {
-        // Immediately restart to keep listening without cutoff
+        // Restart with minimal delay (10ms) to prevent word cutoff during restart gap
         chatRestartTimeoutRef.current = setTimeout(() => {
           if (!chatStoppedByUserRef.current) launchChatRecognition()
           else setIsListening(false)
-        }, 100)
+        }, 10)
       } else {
         setIsListening(false)
       }
