@@ -338,8 +338,10 @@ export function ChatView(props: Props) {
         }
         case 'create_shared_list': {
           const payload = action.payload
+          console.log('[v0] create_shared_list action received:', { payload, userId })
           if (payload.name && userId) {
             const result = await createHousehold(userId, payload.name.trim())
+            console.log('[v0] createHousehold result:', result)
             if (result) {
               // Store the new list ID so subsequent add_to_shared_list actions can use it
               newlyCreatedListId = result.id
