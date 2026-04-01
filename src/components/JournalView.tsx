@@ -415,8 +415,9 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
     if (!SR) return
 
     const rec = new SR()
-    const isAndroid = /android/i.test(navigator.userAgent)
-    rec.continuous = !isAndroid  // Android: false prevents duplication. iOS: true for smooth recording.
+    // Always use continuous: true to prevent cutoff on Android after silence
+    // Duplicate prevention is already handled by tracking seen finals
+    rec.continuous = true
     rec.interimResults = true
     rec.lang = 'en-US'
 
@@ -453,19 +454,12 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
 
     rec.onend = () => {
       if (!stoppedByUserRef.current) {
-        const isAndroid = /android/i.test(navigator.userAgent)
-        if (isAndroid) {
-          // Android: stop cleanly. Text preserved. User taps mic to continue.
-          setIsListening(false)
-          setContent(buildDisplayText())
-        } else {
-          // iOS: restart seamlessly
-          processedIdxRef.current = 0
-          restartTimeoutRef.current = setTimeout(() => {
-            if (!stoppedByUserRef.current) launchRecognition()
-            else setIsListening(false)
-          }, 500)
-        }
+        // User didn't stop - restart recognition to keep listening
+        processedIdxRef.current = 0
+        restartTimeoutRef.current = setTimeout(() => {
+          if (!stoppedByUserRef.current) launchRecognition()
+          else setIsListening(false)
+        }, 300)
       } else {
         setIsListening(false)
       }
