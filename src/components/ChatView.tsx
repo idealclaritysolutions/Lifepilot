@@ -659,8 +659,9 @@ export function ChatView(props: Props) {
     if (!SR) return
 
     const rec = new SR()
-    const isAndroid = /android/i.test(navigator.userAgent)
-    rec.continuous = !isAndroid  // Android: false prevents duplication. iOS: true for smooth recording.
+    // Always use continuous: true to prevent cutoff on Android after silence
+    // Duplicate prevention is already handled by tracking seen finals
+    rec.continuous = true
     rec.interimResults = true
     rec.lang = 'en-US'
 
@@ -696,18 +697,12 @@ export function ChatView(props: Props) {
 
     rec.onend = () => {
       if (!chatStoppedByUserRef.current) {
-        const isAndroid = /android/i.test(navigator.userAgent)
-        if (isAndroid) {
-          // Android: stop cleanly. Text stays in input. User taps mic to continue or send.
-          setIsListening(false)
-        } else {
-          // iOS: restart seamlessly
-          chatProcessedIdxRef.current = 0
-          chatRestartTimeoutRef.current = setTimeout(() => {
-            if (!chatStoppedByUserRef.current) launchChatRecognition()
-            else setIsListening(false)
-          }, 500)
-        }
+        // User didn't stop - restart recognition to keep listening
+        chatProcessedIdxRef.current = 0
+        chatRestartTimeoutRef.current = setTimeout(() => {
+          if (!chatStoppedByUserRef.current) launchChatRecognition()
+          else setIsListening(false)
+        }, 300)
       } else {
         setIsListening(false)
       }
