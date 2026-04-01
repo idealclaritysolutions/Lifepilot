@@ -659,9 +659,7 @@ export function ChatView(props: Props) {
     if (!SR) return
 
     const rec = new SR()
-    // Always use continuous: true to prevent cutoff on Android after silence
-    // Duplicate prevention is already handled by tracking seen finals
-    rec.continuous = true
+    rec.continuous = false
     rec.interimResults = true
     rec.lang = 'en-US'
 
@@ -684,7 +682,6 @@ export function ChatView(props: Props) {
         }
       }
       const display = chatFinalSegmentsRef.current.join(' ') + (interim ? ' ' + interim : '')
-      // Smart punctuation: capitalize first letter, add period at end
       let cleaned = display.trim()
       if (cleaned) cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
       setInput(cleaned)
@@ -697,12 +694,11 @@ export function ChatView(props: Props) {
 
     rec.onend = () => {
       if (!chatStoppedByUserRef.current) {
-        // User didn't stop - restart recognition to keep listening
-        chatProcessedIdxRef.current = 0
+        // Restart with minimal delay (10ms) to prevent word cutoff during restart gap
         chatRestartTimeoutRef.current = setTimeout(() => {
           if (!chatStoppedByUserRef.current) launchChatRecognition()
           else setIsListening(false)
-        }, 300)
+        }, 10)
       } else {
         setIsListening(false)
       }

@@ -415,9 +415,7 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
     if (!SR) return
 
     const rec = new SR()
-    // Always use continuous: true to prevent cutoff on Android after silence
-    // Duplicate prevention is already handled by tracking seen finals
-    rec.continuous = true
+    rec.continuous = false
     rec.interimResults = true
     rec.lang = 'en-US'
 
@@ -454,12 +452,11 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
 
     rec.onend = () => {
       if (!stoppedByUserRef.current) {
-        // User didn't stop - restart recognition to keep listening
-        processedIdxRef.current = 0
+        // Restart with minimal delay (10ms) to prevent word cutoff during restart gap
         restartTimeoutRef.current = setTimeout(() => {
           if (!stoppedByUserRef.current) launchRecognition()
           else setIsListening(false)
-        }, 300)
+        }, 10)
       } else {
         setIsListening(false)
       }
