@@ -6,7 +6,7 @@ import { hasFeature } from '@/App'
 import { generateAIResponse, detectCategory, uid, QUICK_ACTIONS, type AIAction } from '@/lib/ai-engine'
 import { useDocumentUpload } from '@/hooks/use-document-upload'
 import { useCalendar } from '@/hooks/use-calendar'
-import { getMyHouseholds, addSharedItem, type HouseholdInfo } from '@/lib/supabase'
+import { getMyHouseholds, addSharedItem, createHousehold, type HouseholdInfo } from '@/lib/supabase'
 import { Send, Sparkles, Mic, MicOff, Paperclip, Calendar, MapPin, Loader2, Lock } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -65,6 +65,7 @@ export function ChatView(props: Props) {
   // Execute AI actions
   const executeActions = async (actions: AIAction[]) => {
     const log: string[] = []
+    let newlyCreatedListId: string | null = null // Track if a new shared list was created in this batch
 
     for (const action of actions) {
       switch (action.type) {
@@ -314,9 +315,13 @@ export function ChatView(props: Props) {
         }
         case 'add_to_shared_list': {
           const sl = action.payload
-          if (sl.householdId && sl.text && userId) {
+          // Use the newly created list ID if the AI used a placeholder like "NEW" or if householdId is missing
+          const targetListId = (sl.householdId === 'NEW' || !sl.householdId) && newlyCreatedListId 
+            ? newlyCreatedListId 
+            : sl.householdId
+          if (targetListId && sl.text && userId) {
             const result = await addSharedItem({
-              household_id: sl.householdId,
+              household_id: targetListId,
               text: sl.text,
               category: 'grocery',
               checked: false,
@@ -325,14 +330,36 @@ export function ChatView(props: Props) {
               link: sl.link || undefined,
             })
             if (result) {
-              const listName = sharedListsRef.current.find(h => h.id === sl.householdId)?.name || 'shared list'
+              const listName = sharedListsRef.current.find(h => h.id === targetListId)?.name || 'shared list'
               log.push(`📋 Added "${sl.text}" to ${listName}`)
+            }
+          }
+          break
+        }
+        case 'create_shared_list': {
+          const payload = action.payload
+          console.log('[v0] create_shared_list action received:', { payload, userId })
+          if (payload.name && userId) {
+            const result = await createHousehold(userId, payload.name.trim())
+            console.log('[v0] createHousehold result:', result)
+            if (result) {
+              // Store the new list ID so subsequent add_to_shared_list actions can use it
+              newlyCreatedListId = result.id
+              // Refresh the shared lists cache
+              const updatedHouseholds = await getMyHouseholds(userId)
+              sharedListsRef.current = updatedHouseholds
+              // Store the new list info for the AI response to use
+              const shareLink = `https://lifepilot.app/share?code=${result.shareCode}`
+              log.push(`📋 Created shared list "${payload.name}" | Share link: ${shareLink}`)
+            } else {
+              log.push(`⚠️ Could not create shared list "${payload.name}"`)
             }
           }
           break
         }
         case 'add_habit': {
           const h = action.payload
+          console.log('[v0] add_habit action received:', h)
           if (h.name) {
             const newHabit = {
               id: 'habit-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
@@ -344,8 +371,13 @@ export function ChatView(props: Props) {
               createdAt: new Date().toISOString(),
               streakBest: 0,
             }
-            addHabit(newHabit)
-            log.push(`✅ Created habit: ${h.emoji || '⭐'} ${h.name}`)
+            console.log('[v0] Creating habit:', newHabit)
+            if (addHabit) {
+              addHabit(newHabit)
+              log.push(`✅ Created habit: ${h.emoji || '⭐'} ${h.name}`)
+            } else {
+              console.log('[v0] addHabit function is undefined!')
+            }
           }
           break
         }
@@ -487,27 +519,71 @@ export function ChatView(props: Props) {
         }
         case 'add_task_to_goal': {
           const p = action.payload
+          console.log('[v0] add_task_to_goal action received:', p)
           const gid = p.goalId || (window as any).__lastGoalId
+          console.log('[v0] Using goal ID:', gid)
           if (gid) {
             const taskId = `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
             addItem({ id: taskId, text: p.text, category: p.category || 'general', status: 'pending', createdAt: new Date().toISOString(), snoozeCount: 0, goalId: gid, dueDate: p.dueDate } as any)
             log.push(`📋 Task added to goal: ${p.text}`)
+          } else {
+            console.log('[v0] No goal ID found for add_task_to_goal')
           }
           break
         }
         case 'add_habit_to_goal': {
           const p = action.payload
+          console.log('[v0] add_habit_to_goal action received:', p)
           const gid = p.goalId || (window as any).__lastGoalId
+          console.log('[v0] Using goal ID:', gid)
           const habitId = `habit-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`
-          props.addHabit?.({ id: habitId, name: p.name, emoji: p.emoji || '✅', frequency: p.frequency || 'daily', completions: [], createdAt: new Date().toISOString(), streakBest: 0, notes: '' })
-          // Link habit to goal
-          if (gid) {
-            const goal = state.goals?.find(g => g.id === gid)
-            if (goal) {
-              props.updateGoal?.(gid, { linkedHabitIds: [...(goal.linkedHabitIds || []), habitId] })
+          if (props.addHabit) {
+            props.addHabit({ id: habitId, name: p.name, emoji: p.emoji || '✅', frequency: p.frequency || 'daily', completions: [], createdAt: new Date().toISOString(), streakBest: 0, notes: '' })
+            // Link habit to goal
+            if (gid) {
+              const goal = state.goals?.find(g => g.id === gid)
+              if (goal && props.updateGoal) {
+                props.updateGoal(gid, { linkedHabitIds: [...(goal.linkedHabitIds || []), habitId] })
+                log.push(`🔁 Habit "${p.name}" created and linked to goal`)
+              } else {
+                log.push(`🔁 Habit "${p.name}" created (not linked - goal not found)`)
+              }
+            } else {
+              log.push(`🔁 Habit "${p.name}" created (standalone)`)
+            }
+          } else {
+            console.log('[v0] addHabit function is undefined!')
+          }
+          break
+        }
+        case 'link_task_to_goal': {
+          const p = action.payload
+          console.log('[v0] link_task_to_goal action received:', p)
+          if (p.taskId && p.goalId) {
+            // Find the task and update its goalId
+            const task = state.items.find(i => i.id === p.taskId || i.text.toLowerCase().includes((p.taskName || '').toLowerCase()))
+            if (task) {
+              updateItem(task.id, { goalId: p.goalId })
+              log.push(`🔗 Linked task "${task.text}" to goal`)
+            } else {
+              console.log('[v0] Task not found for linking')
             }
           }
-          log.push(`🔁 Habit created: ${p.name}`)
+          break
+        }
+        case 'link_habit_to_goal': {
+          const p = action.payload
+          console.log('[v0] link_habit_to_goal action received:', p)
+          if (p.habitId && p.goalId) {
+            const goal = state.goals?.find(g => g.id === p.goalId)
+            const habit = state.habits.find(h => h.id === p.habitId || h.name.toLowerCase().includes((p.habitName || '').toLowerCase()))
+            if (goal && habit && props.updateGoal) {
+              props.updateGoal(p.goalId, { linkedHabitIds: [...(goal.linkedHabitIds || []), habit.id] })
+              log.push(`🔗 Linked habit "${habit.name}" to goal "${goal.title}"`)
+            } else {
+              console.log('[v0] Goal or habit not found for linking')
+            }
+          }
           break
         }
         case 'complete_goal': {
@@ -988,11 +1064,37 @@ export function ChatView(props: Props) {
               <div className="flex justify-start">
                 <div className="max-w-[85%] rounded-2xl px-4 py-3 bg-amber-50 border border-amber-200 shadow-sm">
                   <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-1.5">Actions taken</p>
-                  {actionLog.map((log, i) => (
-                    <div key={i} className="text-[13px] text-amber-800 leading-relaxed flex items-start gap-2">
-                      <span>{log}</span>
-                    </div>
-                  ))}
+                  {actionLog.map((logEntry, i) => {
+                    // Parse share links and make them clickable
+                    const shareMatch = logEntry.match(/(https:\/\/lifepilot\.app\/share\?code=\w+)/)
+                    if (shareMatch) {
+                      const parts = logEntry.split(shareMatch[1])
+                      return (
+                        <div key={i} className="text-[13px] text-amber-800 leading-relaxed flex flex-wrap items-start gap-1">
+                          <span>{parts[0]}</span>
+                          <a 
+                            href={shareMatch[1]} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-amber-600 underline font-medium hover:text-amber-700"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              navigator.clipboard.writeText(shareMatch[1])
+                              toast.success('Share link copied!')
+                            }}
+                          >
+                            {shareMatch[1]}
+                          </a>
+                          <span>{parts[1] || ''}</span>
+                        </div>
+                      )
+                    }
+                    return (
+                      <div key={i} className="text-[13px] text-amber-800 leading-relaxed flex items-start gap-2">
+                        <span>{logEntry}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}
