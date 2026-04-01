@@ -415,66 +415,57 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
     if (!SR) return
 
     const rec = new SR()
-    // Use continuous=true to prevent cutoff. Deduplication handled by tracking last final text.
-    rec.continuous = true
+    const isAndroid = /android/i.test(navigator.userAgent)
+    rec.continuous = !isAndroid  // Android: false prevents duplication. iOS: true for smooth recording.
     rec.interimResults = true
     rec.lang = 'en-US'
-
-    let lastFinalText = ''
 
     rec.onstart = () => setIsListening(true)
 
     rec.onresult = (e: any) => {
-      let finals = ''
       let interim = ''
-      
-      // Build complete text from all results
-      for (let i = 0; i < e.results.length; i++) {
-        const transcript = e.results[i][0].transcript
+      for (let i = processedIdxRef.current; i < e.results.length; i++) {
         if (e.results[i].isFinal) {
-          finals += transcript
+          const transcript = cleanSegmentInstant(e.results[i][0].transcript.trim())
+          if (!transcript) { processedIdxRef.current = i + 1; continue }
+          const fp = transcript.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim()
+          if (fp && !seenFinalsRef.current.has(fp)) {
+            seenFinalsRef.current.add(fp)
+            finalSegmentsRef.current.push(transcript)
+          }
+          processedIdxRef.current = i + 1
+          
+          if (checkVoiceCommand(buildDisplayText())) {
+            doStopAndSave()
+            return
+          }
         } else {
-          interim += transcript
+          interim = e.results[i][0].transcript
         }
       }
-      
-      // Only update if we have new content (prevents duplicates)
-      const newFinal = cleanSegmentInstant(finals.trim())
-      if (newFinal && newFinal !== lastFinalText) {
-        // Check if this is an extension of previous text or completely new
-        if (newFinal.startsWith(lastFinalText)) {
-          lastFinalText = newFinal
-        } else if (lastFinalText && !newFinal.includes(lastFinalText)) {
-          finalSegmentsRef.current.push(newFinal)
-          lastFinalText = newFinal
-        } else {
-          lastFinalText = newFinal
-        }
-      }
-      
-      // Build display text
-      const accumulated = finalSegmentsRef.current.join(' ')
-      const current = lastFinalText || ''
-      const displayText = (accumulated ? accumulated + ' ' : '') + current + (interim ? ' ' + interim : '')
-      setContent(buildDisplayText(displayText.trim()))
-      
-      // Check for voice commands
-      if (checkVoiceCommand(buildDisplayText(displayText.trim()))) {
-        doStopAndSave()
-        return
-      }
+      setContent(buildDisplayText(interim))
     }
 
     rec.onerror = (e: any) => {
       if (e.error === 'no-speech' || e.error === 'aborted') return
+      console.warn('Voice error:', e.error)
     }
 
     rec.onend = () => {
       if (!stoppedByUserRef.current) {
-        restartTimeoutRef.current = setTimeout(() => {
-          if (!stoppedByUserRef.current) launchRecognition()
-          else setIsListening(false)
-        }, 50)
+        const isAndroid = /android/i.test(navigator.userAgent)
+        if (isAndroid) {
+          // Android: stop cleanly. Text preserved. User taps mic to continue.
+          setIsListening(false)
+          setContent(buildDisplayText())
+        } else {
+          // iOS: restart seamlessly
+          processedIdxRef.current = 0
+          restartTimeoutRef.current = setTimeout(() => {
+            if (!stoppedByUserRef.current) launchRecognition()
+            else setIsListening(false)
+          }, 500)
+        }
       } else {
         setIsListening(false)
       }
