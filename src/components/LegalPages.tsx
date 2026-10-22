@@ -124,7 +124,7 @@ function TermsContent() {
 
       <Section title="3. Accounts & Subscriptions">
         <p><strong>Free tier:</strong> Life Pilot AI offers a free tier with limited features (10 AI messages/day, 5 journal entries/month, 3 people).</p>
-        <p><strong>Paid tiers:</strong> Life Pilot ($9.99/month), Inner Circle ($19.99/month), and Guided ($79.99/month) offer additional features as described on the pricing page.</p>
+        <p><strong>Paid tiers:</strong> Life Pilot ($16.99/month or $159/year), Inner Circle ($34.99/month or $327.51/year), and Guided ($129.99/month) offer additional features as described on the pricing page.</p>
         <p><strong>Promo codes:</strong> Promotional codes may be offered at our discretion and can be revoked or modified at any time.</p>
         <p><strong>Billing:</strong> Paid subscriptions are billed monthly or annually through Stripe. You may cancel at any time. Cancellation takes effect at the end of the current billing period. Refunds are handled on a case-by-case basis.</p>
       </Section>
