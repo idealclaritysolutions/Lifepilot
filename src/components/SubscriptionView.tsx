@@ -207,16 +207,22 @@ export function SubscriptionView({ state, applyPromoCode, onClose }: Props) {
                 </div>
               </div>
               <div className="space-y-1.5 mb-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600">Included on this plan</p>
                 {tier.features.map(f => (
                   <div key={f} className="flex items-center gap-2 text-xs text-stone-600">
                     <Check className="w-3.5 h-3.5 text-emerald-500 flex-none" /><span>{f}</span>
                   </div>
                 ))}
-                {tier.missing.map(f => (
-                  <div key={f} className="flex items-center gap-2 text-xs text-stone-400">
-                    <X className="w-3.5 h-3.5 flex-none" /><span>{f}</span>
-                  </div>
-                ))}
+                {tier.missing.length > 0 && (
+                  <>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-400 pt-2">Not included — needs a higher plan</p>
+                    {tier.missing.map(f => (
+                      <div key={f} className="flex items-center gap-2 text-xs text-stone-400">
+                        <X className="w-3.5 h-3.5 flex-none" /><span>{f}</span>
+                      </div>
+                    ))}
+                  </>
+                )}
               </div>
               {tier.id !== 'free' && !isCurrent && (
                 <div className="space-y-2">
