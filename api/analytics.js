@@ -1,14 +1,14 @@
+import { requireAdmin } from './_admin-auth.js'
+
 // In-memory event store (resets on cold start ~15 min inactivity)
 // All events also logged to console (visible in Vercel Logs dashboard permanently)
 const events = []
 
-const ADMIN_KEY = process.env.ANALYTICS_ADMIN_KEY
-
-export default function handler(req, res) {
+export default async function handler(req, res) {
   // CORS
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   if (req.method === 'OPTIONS') return res.status(200).end()
 
   // POST: log an event
@@ -50,11 +50,23 @@ export default function handler(req, res) {
     }
   }
 
-  // GET: return aggregated stats (requires admin key)
+  // GET: return aggregated stats (admin only)
   if (req.method === 'GET') {
-    const key = req.query.key
-    if (!ADMIN_KEY || key !== ADMIN_KEY) {
-      return res.status(401).json({ error: 'Invalid admin key' })
+    // Primary path: signed-in admin (Bearer token + ADMIN_EMAILS allowlist).
+    // Break-glass path: ?key= strictly equal to ANALYTICS_ADMIN_KEY, only
+    // when that env var is set — fail closed when it is unset. There is no
+    // fallback key in code.
+    const adminKey = process.env.ANALYTICS_ADMIN_KEY
+    const key = req.query?.key
+    const breakGlassOk = Boolean(adminKey) && key === adminKey
+
+    if (!breakGlassOk) {
+      if (req.headers?.authorization || req.headers?.Authorization) {
+        const admin = await requireAdmin(req, res)
+        if (!admin) return // requireAdmin already wrote the 401/403 response
+      } else {
+        return res.status(401).json({ error: 'Invalid admin key' })
+      }
     }
 
     const now = new Date()

@@ -25,6 +25,9 @@ const JournalView = lazy(() =>
 )
 // FocusTimerView is a default export.
 const FocusTimerView = lazy(() => import('@/components/FocusTimerView'))
+const AdminView = lazy(() =>
+  import('@/components/AdminView').then((m) => ({ default: m.AdminView }))
+)
 
 function ViewLoading() {
   return (
@@ -36,7 +39,8 @@ function ViewLoading() {
 }
 import type { AppState, LifeItem, JournalEntry, UserProfile, Person, Habit, Purchase, Subscription, TIER_LIMITS } from '@/App'
 import type { UserLocation } from '@/hooks/use-location'
-import { MessageCircle, LayoutGrid, Bell, BookOpen, Users, Flame, Settings as SettingsIcon, Crown, UserCircle, Timer, X, Target } from 'lucide-react'
+import { MessageCircle, LayoutGrid, Bell, BookOpen, Users, Flame, Settings as SettingsIcon, Crown, UserCircle, Timer, X, Target, Shield } from 'lucide-react'
+import { isAdminEmail } from '@/lib/admin'
 
 interface Props {
   state: AppState
@@ -93,8 +97,12 @@ export function MainApp(props: Props) {
   const [showSubscription, setShowSubscription] = useState(() => sessionStorage.getItem('lp-overlay') === 'subscription')
   const [showAccount, setShowAccount] = useState(() => sessionStorage.getItem('lp-overlay') === 'account')
   const [showSharedList, setShowSharedList] = useState(() => sessionStorage.getItem('lp-overlay') === 'sharedlist')
+  const [showAdmin, setShowAdmin] = useState(() => sessionStorage.getItem('lp-overlay') === 'admin')
   const [showHeaderMenu, setShowHeaderMenu] = useState(false)
   const [showCoachCorner, setShowCoachCorner] = useState(false)
+  const [coachNudgeDismissed, setCoachNudgeDismissed] = useState(() => {
+    try { return sessionStorage.getItem('lp-coach-nudge-dismissed') === '1' } catch { return false }
+  })
 
   // Track overlay changes in sessionStorage
   useEffect(() => {
@@ -102,9 +110,10 @@ export function MainApp(props: Props) {
     else if (showSubscription) sessionStorage.setItem('lp-overlay', 'subscription')
     else if (showAccount) sessionStorage.setItem('lp-overlay', 'account')
     else if (showSharedList) sessionStorage.setItem('lp-overlay', 'sharedlist')
+    else if (showAdmin) sessionStorage.setItem('lp-overlay', 'admin')
     else sessionStorage.removeItem('lp-overlay')
-  }, [showSettings, showSubscription, showAccount, showSharedList])
-  const { isSignedIn, user } = useAuth()
+  }, [showSettings, showSubscription, showAccount, showSharedList, showAdmin])
+  const { isSignedIn, user, userEmail } = useAuth()
 
   const overdueCount = state.items.filter(i => {
     if (i.status !== 'pending') return false
@@ -167,6 +176,14 @@ export function MainApp(props: Props) {
     return <AccountView onClose={() => setShowAccount(false)} />
   }
 
+  if (showAdmin) {
+    return (
+      <Suspense fallback={<ViewLoading />}>
+        <AdminView onClose={() => setShowAdmin(false)} />
+      </Suspense>
+    )
+  }
+
   return (
     <div className="h-[100dvh] flex flex-col max-w-lg mx-auto">
       {/* Post-onboarding setup prompt — shows once if notifications/location not enabled */}
@@ -195,6 +212,12 @@ export function MainApp(props: Props) {
           {state.subscription.isTrial && (
             <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">TRIAL</span>
           )}
+          {state.subscription.tier === 'enterprise' && (
+            <button onClick={() => setShowCoachCorner(true)} title="Coaching Hub"
+              className="w-9 h-9 rounded-xl hover:bg-rose-50 flex items-center justify-center transition-colors">
+              <Target className="w-5 h-5 text-rose-500" />
+            </button>
+          )}
           <div className="relative">
             <button onClick={() => setShowHeaderMenu(!showHeaderMenu)}
               className="w-9 h-9 rounded-xl hover:bg-stone-100 flex items-center justify-center transition-colors">
@@ -217,6 +240,13 @@ export function MainApp(props: Props) {
                     <UserCircle className="w-5 h-5 text-stone-500" />
                     <span className="text-sm text-stone-700 font-medium">Account</span>
                   </button>
+                  {isSignedIn && isAdminEmail(userEmail) && (
+                    <button onClick={() => { setShowAdmin(true); setShowHeaderMenu(false) }}
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-amber-50 text-left transition-colors">
+                      <Shield className="w-5 h-5 text-amber-500" />
+                      <span className="text-sm text-stone-700 font-medium">Admin</span>
+                    </button>
+                  )}
                   <button onClick={() => { setShowSubscription(true); setShowHeaderMenu(false) }}
                     className="w-full flex items-center gap-3 px-4 py-3 hover:bg-stone-50 text-left transition-colors">
                     <Crown className="w-5 h-5 text-amber-400" />
@@ -241,6 +271,21 @@ export function MainApp(props: Props) {
           </div>
         </div>
       </header>
+
+      {state.subscription.tier === 'enterprise' && !coachNudgeDismissed && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-rose-50 border-b border-rose-100">
+          <Target className="w-4 h-4 text-rose-500 flex-none" />
+          <p className="flex-1 text-xs text-rose-700 leading-snug">Guided plan: your Coaching Hub has your monthly review booking and progress →</p>
+          <button onClick={() => setShowCoachCorner(true)}
+            className="text-xs font-semibold text-rose-600 bg-white border border-rose-200 px-2.5 py-1 rounded-lg hover:bg-rose-100 transition-colors flex-none">
+            Open
+          </button>
+          <button onClick={() => { setCoachNudgeDismissed(true); try { sessionStorage.setItem('lp-coach-nudge-dismissed', '1') } catch {} }}
+            className="w-6 h-6 rounded-lg hover:bg-rose-100 flex items-center justify-center transition-colors flex-none" aria-label="Dismiss">
+            <X className="w-3.5 h-3.5 text-rose-400" />
+          </button>
+        </div>
+      )}
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
         <TabsContent value="chat" className="flex-1 overflow-hidden m-0 data-[state=inactive]:hidden">

@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { AppState } from '@/App'
 import { ArrowLeft, Calendar, Bot, User, ExternalLink, ChevronRight, CheckCircle, TrendingUp, Target } from 'lucide-react'
+import { useAuth } from '@/lib/auth'
+import { fetchMyCoaching } from '@/lib/admin-api'
 
 interface Props {
   state: AppState
@@ -10,6 +12,19 @@ interface Props {
 
 export function CoachCorner({ state, onClose, onOpenChat }: Props) {
   const [activeTab, setActiveTab] = useState<'overview' | 'goals' | 'checkins'>('overview')
+  const { isSignedIn } = useAuth()
+  const [coachSnapshot, setCoachSnapshot] = useState<any | null>(null)
+
+  // Server-verified plan totals for the Coach's Snapshot card (Overview).
+  // Silent on failure / non-Guided — renders nothing extra in those cases.
+  useEffect(() => {
+    if (!isSignedIn) return
+    let cancelled = false
+    fetchMyCoaching()
+      .then((data) => { if (!cancelled) setCoachSnapshot(data) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [isSignedIn])
   const name = state.profile.name?.split(' ')[0] || 'there'
   
   const todayStr = new Date().toISOString().split('T')[0]
@@ -93,6 +108,36 @@ export function CoachCorner({ state, onClose, onOpenChat }: Props) {
                 </div>
               </div>
             </div>
+
+            {/* Coach's Snapshot — server-verified plan totals (Guided only) */}
+            {coachSnapshot?.isGuided && coachSnapshot?.stats && (
+              <div className="bg-white rounded-2xl border border-rose-100 p-5 shadow-sm">
+                <h3 className="font-semibold text-stone-800 text-sm mb-1">Coach's Snapshot</h3>
+                <p className="text-[10px] text-stone-400 mb-3">
+                  Verified plan totals{coachSnapshot.subscription?.activatedAt
+                    ? ` · Plan activated ${new Date(coachSnapshot.subscription.activatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+                    : ''}
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-stone-50 rounded-xl p-3 text-center">
+                    <p className="text-xl font-bold text-stone-800">{coachSnapshot.stats.activeGoals ?? 0}</p>
+                    <p className="text-[10px] text-stone-500">active goals</p>
+                  </div>
+                  <div className="bg-stone-50 rounded-xl p-3 text-center">
+                    <p className="text-xl font-bold text-stone-800">{coachSnapshot.stats.completedTasks ?? 0}</p>
+                    <p className="text-[10px] text-stone-500">tasks completed (all-time)</p>
+                  </div>
+                  <div className="bg-stone-50 rounded-xl p-3 text-center">
+                    <p className="text-xl font-bold text-stone-800">{coachSnapshot.stats.journalEntries ?? 0}</p>
+                    <p className="text-[10px] text-stone-500">journal entries (all-time)</p>
+                  </div>
+                  <div className="bg-stone-50 rounded-xl p-3 text-center">
+                    <p className="text-xl font-bold text-stone-800">{coachSnapshot.stats.focusMinutesTotal ?? 0}m</p>
+                    <p className="text-[10px] text-stone-500">focus minutes (all-time)</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Schedule call */}
             <a href="https://calendly.com/idealclarity" target="_blank" rel="noopener noreferrer"

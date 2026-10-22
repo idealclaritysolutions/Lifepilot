@@ -1,3 +1,34 @@
+> ## ⚠️ UPDATE — 2026-10-22: These dashboards now live inside the app (this folder is ARCHIVAL)
+>
+> The Analytics and Coaching dashboards described below have been rebuilt
+> as in-app surfaces and this standalone-HTML folder is now **archival
+> reference only**:
+>
+> - **In-app Admin:** sign in as the app owner, then open the header
+>   avatar menu → **Admin**. It has two tabs — **Analytics** (the old
+>   `admin.html` content) and **Coaching** (the old
+>   `admin-coaching.html` content). Visibility of the menu entry is
+>   gated client-side by the `VITE_ADMIN_EMAILS` allowlist
+>   (`src/lib/admin.ts`), and every call is **server-verified**: the
+>   endpoints require a signed-in admin Supabase **bearer token**
+>   (`Authorization: Bearer <token>`) and enforce the server-side
+>   `ADMIN_EMAILS` allowlist.
+> - **Guided Coaching Hub:** the subscriber-facing Coaching Hub is
+>   in-app for Guided plan users (header menu / header icon / banner →
+>   Coaching Hub), including a server-verified "Coach's Snapshot" from
+>   `GET /api/my-coaching`.
+> - **The `x-admin-key` flow used by the standalone HTML files below
+>   has been retired.** The endpoints no longer accept a typed admin
+>   key from these pages. (`GET /api/analytics` keeps an env-key
+>   break-glass path server-side for emergencies; it is not used by
+>   the app or by anything in this folder.)
+>
+> Everything below this notice is the original 2026-10-22 relocation
+> note, kept for history. Do not follow its "how to use a dashboard
+> now" instructions — use the in-app Admin instead.
+
+---
+
 # Life Pilot AI — Admin Tools (NOT deployed)
 
 These two standalone dashboard pages were moved out of `public/` on 2026-10-22
