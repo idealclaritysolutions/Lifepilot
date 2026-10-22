@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import type { UserProfile } from '@/App'
+import { LandingPage } from '@/components/LandingPage'
 import {
   Sparkles, Heart, Home, DollarSign, Users, ShoppingBag,
   Utensils, Dumbbell, ArrowRight, Check
@@ -45,6 +46,11 @@ export function OnboardingFlow({ onComplete }: Props) {
     onComplete({ name, household, priorities, onboarded: true })
   }
 
+  // Step 0 is the public landing page (features, pricing, FAQ, legal links)
+  if (step === 0) {
+    return <LandingPage onStart={() => setStep(1)} onSignIn={() => setStep(-1)} />
+  }
+
   return (
     <div className="min-h-[100dvh] flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
@@ -59,38 +65,6 @@ export function OnboardingFlow({ onComplete }: Props) {
             />
           ))}
         </div>
-
-        {/* Step 0: Welcome */}
-        {step === 0 && (
-          <div className="text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-amber-200 to-orange-300 mb-6">
-              <Sparkles className="w-10 h-10 text-amber-800" />
-            </div>
-            <h1 className="text-3xl font-bold text-stone-900 mb-3" style={{ fontFamily: "'Georgia', serif" }}>
-              Meet Life Pilot AI
-            </h1>
-            <p className="text-lg text-stone-500 mb-2 leading-relaxed">
-              Your AI co-pilot for everything life throws at you.
-            </p>
-            <p className="text-stone-400 mb-10 max-w-sm mx-auto">
-              Think of me as that impossibly organized friend who always knows what to do, what's due, and what's for dinner.
-            </p>
-            <Button
-              onClick={() => setStep(1)}
-              className="bg-stone-900 hover:bg-stone-800 text-white px-8 py-6 text-lg rounded-2xl"
-            >
-              Let's get started <ArrowRight className="ml-2 w-5 h-5" />
-            </Button>
-            <div className="mt-6 flex flex-col items-center gap-3">
-              <p className="text-sm text-stone-500">
-                Already have an account?{' '}
-                <button onClick={() => setStep(-1)} className="text-amber-600 font-semibold hover:text-amber-700">
-                  Sign in
-                </button>
-              </p>
-            </div>
-          </div>
-        )}
 
         {/* Step -1: Sign in for returning users */}
         {step === -1 && <OnboardingSignIn onBack={() => setStep(0)} />}
