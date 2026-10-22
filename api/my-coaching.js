@@ -13,13 +13,14 @@ export default async function handler(req, res, injectedClient) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
 
   const supabase = injectedClient || getServiceClient()
-  if (!supabase) {
-    return res.status(500).json({ error: 'Supabase not configured' })
-  }
 
   const user = await verifyUser(req, supabase)
   if (!user) {
     return res.status(401).json({ error: 'Unauthorized' })
+  }
+
+  if (!supabase) {
+    return res.status(500).json({ error: 'Supabase not configured' })
   }
 
   try {
