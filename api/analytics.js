@@ -2,7 +2,7 @@
 // All events also logged to console (visible in Vercel Logs dashboard permanently)
 const events = []
 
-const ADMIN_KEY = process.env.ANALYTICS_ADMIN_KEY || 'lifepilot-admin-2026'
+const ADMIN_KEY = process.env.ANALYTICS_ADMIN_KEY
 
 export default function handler(req, res) {
   // CORS
@@ -53,7 +53,7 @@ export default function handler(req, res) {
   // GET: return aggregated stats (requires admin key)
   if (req.method === 'GET') {
     const key = req.query.key
-    if (key !== ADMIN_KEY) {
+    if (!ADMIN_KEY || key !== ADMIN_KEY) {
       return res.status(401).json({ error: 'Invalid admin key' })
     }
 
