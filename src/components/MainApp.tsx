@@ -1,19 +1,39 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { useAuth } from '@/lib/auth'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ChatView } from '@/components/ChatView'
 import { LifeBoard } from '@/components/LifeBoard'
 import { NudgesView } from '@/components/NudgesView'
-import { JournalView } from '@/components/JournalView'
 import { PeopleView } from '@/components/PeopleView'
 import { HabitsView } from '@/components/HabitsView'
-import FocusTimerView from '@/components/FocusTimerView'
 import { CoachCorner } from '@/components/CoachCorner'
 import { Settings } from '@/components/Settings'
-import { SubscriptionView } from '@/components/SubscriptionView'
 import { SetupPrompt } from '@/components/SetupPrompt'
 import { AccountView } from '@/components/AccountView'
-import { SharedListView } from '@/components/SharedListView'
+
+// Heavy overlay / non-first-screen views are code-split out of the main chunk.
+// ChatView, LifeBoard and the tab shell stay static (first-screen path).
+// Named exports need adapting to a default export for React.lazy.
+const SubscriptionView = lazy(() =>
+  import('@/components/SubscriptionView').then((m) => ({ default: m.SubscriptionView }))
+)
+const SharedListView = lazy(() =>
+  import('@/components/SharedListView').then((m) => ({ default: m.SharedListView }))
+)
+const JournalView = lazy(() =>
+  import('@/components/JournalView').then((m) => ({ default: m.JournalView }))
+)
+// FocusTimerView is a default export.
+const FocusTimerView = lazy(() => import('@/components/FocusTimerView'))
+
+function ViewLoading() {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 w-full min-h-[200px] py-16 bg-[#FAF9F6]">
+      <div className="w-8 h-8 rounded-full border-2 border-stone-200 border-t-amber-500 animate-spin" />
+      <p className="text-sm text-stone-500">Loading…</p>
+    </div>
+  )
+}
 import type { AppState, LifeItem, JournalEntry, UserProfile, Person, Habit, Purchase, Subscription, TIER_LIMITS } from '@/App'
 import type { UserLocation } from '@/hooks/use-location'
 import { MessageCircle, LayoutGrid, Bell, BookOpen, Users, Flame, Settings as SettingsIcon, Crown, UserCircle, Timer, X, Target } from 'lucide-react'
@@ -109,7 +129,11 @@ export function MainApp(props: Props) {
   const tierLabel = TIER_NAMES[state.subscription.tier] || ''
 
   if (showSubscription) {
-    return <SubscriptionView state={state} applyPromoCode={applyPromoCode} onClose={() => setShowSubscription(false)} />
+    return (
+      <Suspense fallback={<ViewLoading />}>
+        <SubscriptionView state={state} applyPromoCode={applyPromoCode} onClose={() => setShowSubscription(false)} />
+      </Suspense>
+    )
   }
 
   if (showSettings) {
@@ -229,13 +253,18 @@ export function MainApp(props: Props) {
           <PeopleView state={state} addPerson={addPerson} updatePerson={updatePerson} removePerson={removePerson} />
         </TabsContent>
         <TabsContent value="journal" className="flex-1 overflow-auto m-0 data-[state=inactive]:hidden">
-          <JournalView state={state} addJournalEntry={addJournalEntry} deleteJournalEntry={deleteJournalEntry} updateJournalEntry={updateJournalEntry} />
+          <Suspense fallback={<ViewLoading />}>
+            <JournalView state={state} addJournalEntry={addJournalEntry} deleteJournalEntry={deleteJournalEntry} updateJournalEntry={updateJournalEntry} />
+          </Suspense>
         </TabsContent>
         <TabsContent value="lists" className="flex-1 overflow-auto m-0 data-[state=inactive]:hidden">
-          <SharedListView onClose={() => {}} state={state} isTab={true} />
+          <Suspense fallback={<ViewLoading />}>
+            <SharedListView onClose={() => {}} state={state} isTab={true} />
+          </Suspense>
         </TabsContent>
         <TabsContent value="focus" className="flex-1 overflow-auto m-0 data-[state=inactive]:hidden">
-          <FocusTimerView focusSessions={state.focusSessions || []} onSessionComplete={(minutes) => {
+          <Suspense fallback={<ViewLoading />}>
+            <FocusTimerView focusSessions={state.focusSessions || []} onSessionComplete={(minutes) => {
             const today = new Date().toISOString().split('T')[0]
             const sessions = [...(state.focusSessions || [])]
             const idx = sessions.findIndex(s => s.date === today)
@@ -248,6 +277,7 @@ export function MainApp(props: Props) {
           }} onAICoach={(message) => {
             addChat({ role: 'assistant', content: message })
           }} />
+          </Suspense>
         </TabsContent>
 
         <TabsList className={`flex-none grid h-16 bg-white border-t border-stone-100 rounded-none shadow-[0_-2px_10px_rgba(0,0,0,0.04)]`}

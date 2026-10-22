@@ -9,7 +9,6 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 export async function saveUserData(userId: string, data: any): Promise<boolean> {
   try {
-    console.log('[Supabase] Saving data for:', userId)
     // Write both user_id and clerk_user_id for backward compat
     const { error } = await supabase
       .from('user_data')
@@ -45,10 +44,8 @@ export async function loadUserData(userId: string): Promise<any | null> {
       .limit(1)
       .single()
     if (error || !data) {
-      console.log('[Supabase] No cloud data found for:', userId)
       return null
     }
-    console.log('[Supabase] Cloud data loaded for:', userId)
     return data.app_state
   } catch { return null }
 }

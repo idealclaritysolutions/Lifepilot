@@ -39,7 +39,6 @@ export function usePushSubscribe(notificationsEnabled: boolean) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: user.id, subscription: sub.toJSON() }),
         })
-        console.log('[Push] Auto-subscribed to Web Push')
       } catch (err) {
         console.warn('[Push] Auto-subscribe failed:', err)
       }

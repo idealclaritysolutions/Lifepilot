@@ -7,6 +7,8 @@ import { toast } from 'sonner'
 import { LegalPage } from '@/components/LegalPages'
 import { AccountSection, useAuth } from '@/components/AuthGate'
 
+const IS_STORE_BUILD = import.meta.env.VITE_STORE_BUILD === 'true'
+
 const ENERGY_DRAINERS = [
   { id: 'meals', label: 'Meal Planning', emoji: '🍽️' },
   { id: 'health', label: 'Health & Wellness', emoji: '💪' },
@@ -132,7 +134,6 @@ export function Settings({ state, notifications, locationHook, updateProfile, se
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: user?.id || 'anonymous', subscription: sub.toJSON() }),
           })
-          console.log('[Push] Web Push subscribed successfully')
         }
       } catch (err) {
         console.warn('[Push] Web Push subscription failed:', err)
@@ -319,19 +320,21 @@ export function Settings({ state, notifications, locationHook, updateProfile, se
               </button>
             </div>
 
-            {/* Google Integration — Coming Soon */}
-            <div className="flex items-center justify-between opacity-60">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center">
-                  <Calendar className="w-5 h-5 text-purple-600" />
+            {/* Google Integration — Coming Soon (hidden in store builds) */}
+            {!IS_STORE_BUILD && (
+              <div className="flex items-center justify-between opacity-60">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center">
+                    <Calendar className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-stone-700">Google Calendar & Gmail</p>
+                    <p className="text-xs text-stone-600">Coming soon</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-stone-700">Google Calendar & Gmail</p>
-                  <p className="text-xs text-stone-600">Coming soon</p>
-                </div>
+                <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-stone-100 text-stone-400">Soon</span>
               </div>
-              <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-stone-100 text-stone-400">Soon</span>
-            </div>
+            )}
           </div>
         </div>
 
@@ -429,10 +432,10 @@ export function Settings({ state, notifications, locationHook, updateProfile, se
               sessionStorage.setItem('lp-version-taps', '0')
               const code = prompt('Enter access code:')
               if (code) {
+                // Hidden access prompt (tap version 5x) — reviewer code only.
+                // Marketing codes go through the promo field on the Plans screen.
                 const codeMap: Record<string, string> = {
-                  'GOOGLEXYZREVIEW': 'enterprise', 'PILOTXYZADMIN': 'enterprise',
-                  'FOUNDING100': 'premium', 'LIFEPILOT2026': 'premium',
-                  'BETA2026': 'premium', 'FRIEND50': 'premium', 'LAUNCH30': 'premium',
+                  'GOOGLEXYZREVIEW': 'enterprise',
                 }
                 const tier = codeMap[code.toUpperCase().trim()]
                 if (tier) {

@@ -111,7 +111,6 @@ export const PROMO_CODES: Record<string, { tier: SubscriptionTier; durationDays:
   'FRIEND50': { tier: 'premium', durationDays: 60, label: 'Friend of Life Pilot AI — Inner Circle for 60 days' },
   'LAUNCH30': { tier: 'premium', durationDays: 30, label: 'Launch Special — Inner Circle for 30 days' },
   'GOOGLEXYZREVIEW': { tier: 'enterprise', durationDays: null, label: 'Google Play Reviewer — Full access' },
-  'PILOTXYZADMIN': { tier: 'enterprise', durationDays: null, label: 'Admin — Guided plan forever' },
 }
 
 // ─── HABITS SYSTEM ────────────────────────────────────────────────
@@ -304,7 +303,6 @@ function App() {
       const now = new Date()
       const trialEnd = new Date(sub.trialEndsAt)
       if (now > trialEnd) {
-        console.log('[LifePilot] Trial expired, downgrading to free')
         setState(prev => ({
           ...prev,
           subscription: { tier: 'free', activatedAt: prev.subscription.activatedAt },
@@ -369,11 +367,9 @@ function App() {
     const isDifferentUser = previousUserId && previousUserId !== currentUserId
 
     const syncCloud = async () => {
-      console.log('[LifePilot] Syncing cloud data for:', currentUserId)
       
       // CRITICAL: If a different user signed in, clear local state first
       if (isDifferentUser) {
-        console.log('[LifePilot] Different user detected — clearing local state to prevent data bleed')
         localStorage.removeItem(STORAGE_KEY)
         localStorage.removeItem('lp-trial-banner-dismissed')
         localStorage.removeItem('lp-morning-brief-' + new Date().toDateString())
@@ -392,7 +388,6 @@ function App() {
           const localTime = new Date(localData.lastSyncedAt || 0).getTime()
           
           if (localTime > cloudTime && localData.profile?.onboarded) {
-            console.log('[LifePilot] Local data is newer, merging with cloud')
             const mergedItems = [...(cloudData.items || [])];
             (localData.items || []).forEach((li: any) => { if (!mergedItems.some((ci: any) => ci.id === li.id)) mergedItems.push(li) })
             const mergedJournal = [...(cloudData.journal || [])];
@@ -413,25 +408,21 @@ function App() {
             setState(prev => ({ ...DEFAULT_STATE, ...merged }))
             await saveUserData(currentUserId, { ...merged, lastSyncedAt: new Date().toISOString() })
           } else {
-            console.log('[LifePilot] Cloud data is current, loading to device')
             setState(prev => ({ ...DEFAULT_STATE, ...cloudData, habits: dedupeHabits(cloudData.habits) }))
           }
         } else {
           // Different user — load ONLY their cloud data, no merge
-          console.log('[LifePilot] Loading cloud data for new user (clean load)')
           setState(prev => ({ ...DEFAULT_STATE, ...cloudData, habits: dedupeHabits(cloudData.habits) }))
         }
       } else {
         // No cloud data for this user
         if (isDifferentUser) {
           // Brand new user on this device — fresh start
-          console.log('[LifePilot] New user, fresh start')
           const name = userName || 'Friend'
           setState({ ...DEFAULT_STATE, profile: { ...DEFAULT_STATE.profile, name, onboarded: true } })
         } else {
           const localData = loadState()
           if (localData.profile?.onboarded) {
-            console.log('[LifePilot] No cloud data, uploading local data')
             await saveUserData(currentUserId, { ...localData, chatHistory: (localData.chatHistory || []).slice(-100) })
           } else {
             const name = userName || 'Friend'
@@ -458,7 +449,6 @@ function App() {
           const localStored = localStorage.getItem(STORAGE_KEY)
           const localTime = localStored ? new Date(JSON.parse(localStored).lastSyncedAt || 0).getTime() : 0
           if (cloudTime > localTime) {
-            console.log('[LifePilot] Cloud data is newer, syncing to device')
             setState(prev => ({ ...DEFAULT_STATE, ...cloudData, habits: dedupeHabits(cloudData.habits) }))
           }
         }
@@ -484,9 +474,7 @@ function App() {
       if (isSignedIn && authUser?.id && state.profile.onboarded) {
         if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
         syncTimerRef.current = setTimeout(async () => {
-          console.log('[LifePilot] Syncing to cloud for user:', authUser.id)
-          const ok = await saveUserData(authUser.id, toSave)
-          console.log('[LifePilot] Cloud sync result:', ok)
+          await saveUserData(authUser.id, toSave)
         }, 2000) // Save after 2 seconds of inactivity
       }
     } catch (e) {
