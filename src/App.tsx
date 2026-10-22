@@ -103,14 +103,11 @@ export const PLAN_NAMES: Record<SubscriptionTier, string> = {
   enterprise: 'Guided',
 }
 
-// Promo codes: FOUNDING100 = premium forever, BETA2026 = premium 90 days, etc.
+// Promo codes: GOOGLEXYZREVIEW = Google Play reviewer (full access), LIFEPILOT-OWNER = owner (full access).
+// All former marketing codes were retired 2026-10-22.
 export const PROMO_CODES: Record<string, { tier: SubscriptionTier; durationDays: number | null; label: string }> = {
-  'FOUNDING100': { tier: 'premium', durationDays: null, label: 'Founding Member — Inner Circle forever' },
-  'LIFEPILOT2026': { tier: 'premium', durationDays: null, label: 'Founding Member — Inner Circle forever' },
-  'BETA2026': { tier: 'premium', durationDays: 90, label: 'Beta Tester — Inner Circle for 90 days' },
-  'FRIEND50': { tier: 'premium', durationDays: 60, label: 'Friend of Life Pilot AI — Inner Circle for 60 days' },
-  'LAUNCH30': { tier: 'premium', durationDays: 30, label: 'Launch Special — Inner Circle for 30 days' },
   'GOOGLEXYZREVIEW': { tier: 'enterprise', durationDays: null, label: 'Google Play Reviewer — Full access' },
+  'LIFEPILOT-OWNER': { tier: 'enterprise', durationDays: null, label: 'Owner — Full access' },
 }
 
 // ─── HABITS SYSTEM ────────────────────────────────────────────────

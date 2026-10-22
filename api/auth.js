@@ -22,13 +22,10 @@ export default async function handler(req, res) {
       const { code } = req.body;
       if (!code) return res.status(400).json({ error: 'No code provided' });
 
-      const PROMO_CODES = {
-        'FOUNDING100': { tier: 'premium', durationDays: null, label: 'Founding Member — Inner Circle forever', active: true },
-        'LIFEPILOT2026': { tier: 'premium', durationDays: null, label: 'Founding Member — Inner Circle forever', active: true },
-        'BETA2026': { tier: 'premium', durationDays: 90, label: 'Beta Tester — Inner Circle for 90 days', active: true },
-        'FRIEND50': { tier: 'premium', durationDays: 60, label: 'Friend of LifePilot — Inner Circle for 60 days', active: true },
-        'LAUNCH30': { tier: 'premium', durationDays: 30, label: 'Launch Special — Inner Circle for 30 days', active: true },
-      };
+      // All marketing promo codes were retired 2026-10-22. The remaining codes
+      // (Google Play reviewer + owner) are validated client-side in src/App.tsx
+      // and are intentionally NOT accepted by this server endpoint.
+      const PROMO_CODES = {};
 
       const promo = PROMO_CODES[code.toUpperCase().trim()];
       if (!promo || !promo.active) {
