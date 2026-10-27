@@ -119,9 +119,7 @@ export function LandingPage({ onStart, onSignIn }: Props) {
       {/* Top bar */}
       <header className="max-w-5xl mx-auto flex items-center justify-between px-5 py-4">
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-br from-amber-200 to-orange-300">
-            <Sparkles className="w-5 h-5 text-amber-800" />
-          </span>
+          <img src="/icon-192.png" alt="Life Pilot AI logo" className="w-9 h-9 rounded-xl" />
           <span className="font-bold text-stone-800" style={{ fontFamily: "'Georgia', serif" }}>Life Pilot AI</span>
         </div>
         <button onClick={onSignIn} className="text-sm font-semibold text-amber-700 hover:text-amber-800">
