@@ -42,9 +42,7 @@ export function IOSInstallPrompt() {
         <div className="bg-gradient-to-r from-amber-50 to-orange-50 px-5 pt-5 pb-4">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-300 to-orange-400 flex items-center justify-center shadow-sm">
-                <span className="text-lg">✦</span>
-              </div>
+              <img src="/icon-192.png" alt="Life Pilot AI logo" className="w-11 h-11 rounded-xl shadow-sm" />
               <div>
                 <p className="font-bold text-stone-800 text-[15px]">Install Life Pilot AI</p>
                 <p className="text-[11px] text-stone-500">Get notifications, voice shortcuts & more</p>
