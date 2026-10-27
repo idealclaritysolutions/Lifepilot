@@ -2,8 +2,13 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AuthProvider } from '@/lib/auth'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { initNativeNotifications } from '@/lib/native'
 import './index.css'
 import App from './App.tsx'
+
+// Register for native push/local notifications on store builds.
+// No-op on web (web keeps its service-worker pipeline).
+initNativeNotifications()
 
 // Global error handler
 window.addEventListener('error', (e) => {
