@@ -379,18 +379,18 @@ export function SharedListView({ onClose, state, isTab }: Props) {
                         </div>
                       ) : (
                         <>
-                          <span className="text-base text-stone-800 font-medium">{item.text}</span>
+                          <p className="text-base text-stone-800 font-medium leading-snug">{item.text}</p>
                           {/* Notes with date/time/location metadata */}
                           {item.notes && (
-                            <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md inline-block">
+                            <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md inline-block mt-1">
                               {item.notes}
                             </span>
                           )}
-                          {/* Attribution line */}
-                          <span className="text-xs text-stone-400">
+                          {/* Attribution line — its own line, clear of the title */}
+                          <p className="text-xs text-stone-400 mt-1">
                             {nameMap[item.added_by] ? `${nameMap[item.added_by]}` : ''}
                             {item.created_at ? ` · ${new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
-                          </span>
+                          </p>
                           {hasLink && (
                             <a href={item.link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
                               <LinkIcon className="w-3 h-3" /> Open link
