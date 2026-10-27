@@ -29,9 +29,7 @@ export function SetupPrompt({ onGoToSettings, onSkip }: Props) {
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 px-6 pt-6 pb-4 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-300 to-orange-400 flex items-center justify-center mx-auto mb-3 shadow-md">
-            <span className="text-2xl">✦</span>
-          </div>
+          <img src="/icon-192.png" alt="Life Pilot AI logo" className="w-14 h-14 rounded-2xl mx-auto mb-3 shadow-md" />
           <h2 className="text-lg font-bold text-stone-800" style={{ fontFamily: "'Georgia', serif" }}>
             One quick thing
           </h2>
