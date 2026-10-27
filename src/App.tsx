@@ -811,9 +811,7 @@ function App() {
       ) : !authLoaded && !state.profile.onboarded ? (
         <div className="min-h-[100dvh] flex items-center justify-center">
           <div className="text-center">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-300 to-orange-400 flex items-center justify-center mx-auto mb-4 shadow-lg">
-              <span className="text-2xl">✦</span>
-            </div>
+            <img src="/icon-192.png" alt="Life Pilot AI logo" className="w-16 h-16 rounded-2xl mx-auto mb-4 shadow-lg" />
             <p className="text-sm text-stone-400">Loading...</p>
           </div>
         </div>
