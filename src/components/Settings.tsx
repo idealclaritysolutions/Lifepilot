@@ -118,7 +118,7 @@ export function Settings({ state, notifications, locationHook, updateProfile, se
     if (granted) {
       updateProfile({ notificationsEnabled: true })
       toast.success('Notifications enabled! I\'ll remind you when things are due.')
-      notifications.sendNotification('Life Pilot AI ✦', `Hey ${state.profile.name}! Reminders are now active. I'll nudge you when tasks are due.`)
+      notifications.sendNotification('Life Pilot AI', `Hey ${state.profile.name}! Reminders are now active. I'll nudge you when tasks are due.`)
       
       // Subscribe to Web Push for server-sent notifications
       try {
