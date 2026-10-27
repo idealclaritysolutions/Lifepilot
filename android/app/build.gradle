@@ -4,7 +4,10 @@ android {
     namespace = "app.getlifepilot"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "app.getlifepilot"
+        // Play listing identity: the existing March TWA listing.
+        // iOS keeps app.getlifepilot (App Store record); Android overrides
+        // here so capacitor.config.ts stays untouched for iOS.
+        applicationId "app.getlifepilot.twa"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
