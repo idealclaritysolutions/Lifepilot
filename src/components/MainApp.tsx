@@ -195,9 +195,7 @@ export function MainApp(props: Props) {
       )}
       <header className="flex items-center justify-between px-5 py-3 border-b border-stone-100 bg-[#FAF9F6]">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-300 to-orange-400 flex items-center justify-center shadow-sm">
-            <span className="text-lg">✦</span>
-          </div>
+          <img src="/icon-192.png" alt="Life Pilot AI logo" className="w-9 h-9 rounded-xl" />
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-base font-bold text-stone-800 leading-tight" style={{ fontFamily: "'Georgia', serif" }}>Life Pilot AI</h1>
