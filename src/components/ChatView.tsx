@@ -4,6 +4,7 @@ import { Textarea } from '@/components/ui/textarea'
 import type { AppState, LifeItem } from '@/App'
 import { hasFeature } from '@/App'
 import { generateAIResponse, detectCategory, uid, QUICK_ACTIONS, type AIAction } from '@/lib/ai-engine'
+import { isNative, startDictation, type DictationSession } from '@/lib/native'
 import { useDocumentUpload } from '@/hooks/use-document-upload'
 import { useCalendar } from '@/hooks/use-calendar'
 import { getMyHouseholds, addSharedItem, createHousehold, type HouseholdInfo } from '@/lib/supabase'
@@ -626,12 +627,17 @@ export function ChatView(props: Props) {
   const chatProcessedIdxRef = useRef(0)
   const chatStoppedByUserRef = useRef(false)
   const chatRestartTimeoutRef = useRef<any>(null)
+  // Native dictation session (store builds only; null on web). The web voice
+  // path below is untouched — native uses the Capacitor speech plugin
+  // because WebView has no webkitSpeechRecognition.
+  const nativeSessionRef = useRef<DictationSession | null>(null)
 
   useEffect(() => {
     return () => {
       chatStoppedByUserRef.current = true
       try { recognitionRef.current?.abort() } catch {}
       if (chatRestartTimeoutRef.current) clearTimeout(chatRestartTimeoutRef.current)
+      nativeSessionRef.current?.stop().catch(() => {})
     }
   }, [])
 
@@ -703,6 +709,33 @@ export function ChatView(props: Props) {
   }
 
   const toggleVoice = () => {
+    // Store builds: native dictation. Partials update the input live; tapping
+    // the mic again stops and sends, mirroring the web toggle-off behavior.
+    if (isNative()) {
+      if (isListening) {
+        const session = nativeSessionRef.current
+        nativeSessionRef.current = null
+        setIsListening(false)
+        session?.stop().catch(() => {})
+        const currentText = input.trim()
+        if (currentText) setTimeout(() => handleSend(currentText), 300)
+        return
+      }
+      setIsListening(true)
+      startDictation({
+        onTranscript: (text) => {
+          const cleaned = text.trim()
+          if (!cleaned) return
+          setInput(cleaned.charAt(0).toUpperCase() + cleaned.slice(1))
+        },
+        onError: () => setIsListening(false),
+        onEnd: () => setIsListening(false),
+      }).then((session) => {
+        if (!session) { setIsListening(false); return }
+        nativeSessionRef.current = session
+      })
+      return
+    }
     if (isListening) {
       // Stop recording
       chatStoppedByUserRef.current = true
@@ -734,6 +767,8 @@ export function ChatView(props: Props) {
       chatStoppedByUserRef.current = true
       if (chatRestartTimeoutRef.current) clearTimeout(chatRestartTimeoutRef.current)
       try { recognitionRef.current?.abort() } catch {}
+      nativeSessionRef.current?.stop().catch(() => {})
+      nativeSessionRef.current = null
       setIsListening(false)
       chatFinalSegmentsRef.current = []
       chatSeenFinalsRef.current = new Set()
