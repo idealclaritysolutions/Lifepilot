@@ -779,7 +779,7 @@ function getFallbackResponse(userMessage: string, state: AppState): AIResponse {
     return { message: `I'd love to plan your meals, ${name}! Quick questions:\n\n• Any dietary restrictions or allergies?\n• Favorite cuisines?\n• How much time to cook — 15, 30, or 45+ minutes?`, actions: [] }
   }
 
-  if (t.includes('bill') || t.includes('phone')) {
+  if ((t.includes('bill') || t.includes('phone')) && (t.includes('remind') || t.includes('pay') || t.includes('due'))) {
     const fri = new Date(); fri.setDate(fri.getDate() + ((5 - fri.getDay() + 7) % 7 || 7))
     return { message: `Done — phone bill reminder set for ${fri.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}. I'll nudge you the day before. 💰`, actions: [{ type: 'add_item', payload: { text: 'Pay phone bill', category: 'finance', dueDate: fri.toISOString().split('T')[0] } }] }
   }
@@ -789,8 +789,10 @@ function getFallbackResponse(userMessage: string, state: AppState): AIResponse {
   }
 
   if (t.includes('overwhelm') || t.includes('stressed')) {
-    const toSnooze = pending.slice(2)
-    return { message: `I hear you, ${name}. Snoozed everything except your top 2. Just focus on those. 💛`, actions: toSnooze.map(i => ({ type: 'snooze_item', payload: { id: i.id } })) }
+    const top2 = pending.slice(0, 2)
+    if (top2.length === 0) return { message: `Nothing pending right now, ${name} — your board is clear. 💛`, actions: [] }
+    const rest = pending.length - 2
+    return { message: `I hear you, ${name}. Your top 2 right now are:\n\n• ${top2.map(i => i.text).join('\n• ')}${rest > 0 ? `\n\nWant me to snooze the other ${rest} so you can focus on just these? Say "yes, snooze the rest" and I'll do it.` : ''}`, actions: [] }
   }
 
   if (t.includes('remind') || t.includes('reminder')) {
@@ -804,9 +806,10 @@ function getFallbackResponse(userMessage: string, state: AppState): AIResponse {
     if (match) return { message: `Nice work! ✅ Marked "${match.text}" as done.`, actions: [{ type: 'complete_item', payload: { id: match.id } }] }
   }
 
+  const isQuestion = t.endsWith('?') || /^(what|why|how|when|where|who|which|can|could|should|is|are|do|does|did)\b/.test(t)
   const isAction = /\b(need to|have to|gotta|should|must|remind|pay|call|fix|clean|schedule|book|cancel|return|send|pick up)\b/.test(t)
-  if (isAction || (t.split(/\s+/).length >= 5 && !t.endsWith('?'))) {
-    return { message: `On it, ${name}! Added to your board. 👍`, actions: [{ type: 'add_item', payload: { text: userMessage, category: detectCategory(userMessage) } }] }
+  if (!isQuestion && isAction) {
+    return { message: `On it, ${name}! Added "${userMessage}" to your board. 👍`, actions: [{ type: 'add_item', payload: { text: userMessage, category: detectCategory(userMessage) } }] }
   }
 
   return { message: `What can I help with, ${name}?`, actions: [] }
