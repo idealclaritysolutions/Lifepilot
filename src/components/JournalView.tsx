@@ -4,6 +4,7 @@ import { Textarea } from '@/components/ui/textarea'
 import type { AppState, JournalEntry } from '@/App'
 import { hasFeature } from '@/App'
 import { uid } from '@/lib/ai-engine'
+import { isNative, startDictation, type DictationSession } from '@/lib/native'
 import { BookOpen, ChevronRight, Sparkles, Mic, MicOff, Search, X, TrendingUp, Calendar, Trash2, Pencil, Lock, Volume2, VolumeX } from 'lucide-react'
 
 interface Props {
@@ -330,6 +331,7 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
       stoppedByUserRef.current = true
       try { recognitionRef.current?.abort() } catch {}
       if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current)
+      nativeSessionRef.current?.stop().catch(() => {})
       try { window.speechSynthesis?.cancel() } catch {}
     }
   }, [])
@@ -476,6 +478,28 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
   }
 
   const startVoice = () => {
+    // Store builds: native dictation. Partials update the entry live.
+    if (isNative()) {
+      textBeforeVoiceRef.current = content.trim()
+      nativeTextRef.current = ''
+      stoppedByUserRef.current = false
+      setIsListening(true)
+      startDictation({
+        onTranscript: (text) => {
+          const cleaned = text.trim()
+          if (!cleaned) return
+          const combined = [textBeforeVoiceRef.current, cleaned].join(' ').replace(/\s+/g, ' ').trim()
+          nativeTextRef.current = addSmartPunctuation(combined)
+          setContent(nativeTextRef.current)
+        },
+        onError: () => setIsListening(false),
+        onEnd: () => setIsListening(false),
+      }).then((session) => {
+        if (!session) { setIsListening(false); return }
+        nativeSessionRef.current = session
+      })
+      return
+    }
     textBeforeVoiceRef.current = content.trim()
     finalSegmentsRef.current = []
     seenFinalsRef.current = new Set()
@@ -487,6 +511,26 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
   }
 
   const stopVoice = () => {
+    // Store builds: stop the native session, then run the same tail
+    // (AI transcript polish) as the web path.
+    if (isNative() && nativeSessionRef.current) {
+      const session = nativeSessionRef.current
+      nativeSessionRef.current = null
+      stoppedByUserRef.current = true
+      if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current)
+      session.stop().catch(() => {})
+      setIsListening(false)
+      const rawText = nativeTextRef.current || content.trim()
+      setContent(rawText)
+      if (rawText.trim().length > 20) {
+        setIsCleaningTranscript(true)
+        cleanTranscriptWithAI(rawText).then(cleaned => {
+          setContent(cleaned)
+          setIsCleaningTranscript(false)
+        })
+      }
+      return
+    }
     stoppedByUserRef.current = true
     if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current)
     try { recognitionRef.current?.stop() } catch {}
