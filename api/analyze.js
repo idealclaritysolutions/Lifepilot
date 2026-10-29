@@ -49,7 +49,7 @@ export default async function handler(req, res) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-5-5',
         max_tokens: 2000,
         messages,
         system: 'You are LifePilot, analyzing a document. Extract ALL actionable information. Return JSON with summary, extractedItems, and keyFacts.',
@@ -61,7 +61,7 @@ export default async function handler(req, res) {
       const retry = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: 'claude-3-5-sonnet-20241022', max_tokens: 2000, messages, system: 'Analyze document. Return JSON.' }),
+        body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 2000, messages, system: 'Analyze document. Return JSON.' }),
       });
       const retryText = await retry.text();
       if (retry.ok) return res.status(200).json(JSON.parse(retryText));
