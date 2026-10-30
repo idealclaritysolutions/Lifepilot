@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { encryptToken, decryptToken } from './_google-crypto.js'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL,
@@ -8,26 +9,27 @@ const supabase = createClient(
 async function getValidToken(userId) {
   const { data } = await supabase.from('google_tokens').select('*').eq('user_id', userId).single()
   if (!data) return null
-  if (new Date(data.expires_at) < new Date()) {
-    const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        refresh_token: data.refresh_token,
-        client_id: process.env.GOOGLE_CLIENT_ID,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET,
-        grant_type: 'refresh_token',
-      }),
-    })
-    const newTokens = await refreshRes.json()
-    if (!newTokens.access_token) return null
-    await supabase.from('google_tokens').update({
-      access_token: newTokens.access_token,
-      expires_at: new Date(Date.now() + newTokens.expires_in * 1000).toISOString(),
-    }).eq('user_id', userId)
-    return newTokens.access_token
-  }
-  return data.access_token
+  const refreshToken = decryptToken(data.refresh_token)
+  if (!refreshToken) return null
+  const storedAccess = decryptToken(data.access_token)
+  if (storedAccess && new Date(data.expires_at) >= new Date()) return storedAccess
+  const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      refresh_token: refreshToken,
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      grant_type: 'refresh_token',
+    }),
+  })
+  const newTokens = await refreshRes.json()
+  if (!newTokens.access_token) return null
+  await supabase.from('google_tokens').update({
+    access_token: encryptToken(newTokens.access_token),
+    expires_at: new Date(Date.now() + newTokens.expires_in * 1000).toISOString(),
+  }).eq('user_id', userId)
+  return newTokens.access_token
 }
 
 export default async function handler(req, res) {
