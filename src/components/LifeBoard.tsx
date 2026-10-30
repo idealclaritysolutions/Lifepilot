@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { AppState, LifeItem, Goal, Habit } from '@/App'
 import { Check, Trash2, Target, Plus, ChevronDown, ChevronUp, Sparkles, X, Pencil, CalendarDays } from 'lucide-react'
+import { useAuth } from '@/components/AuthGate'
+import { apiBase } from '@/lib/api-base'
 
 interface Props {
   state: AppState
@@ -50,6 +52,40 @@ function getStreak(completions: string[]): number {
   let s = 0
   for (let i = 0; i < 90; i++) { const d = new Date(); d.setDate(d.getDate() - i); if (completions.includes(d.toISOString().split('T')[0])) s++; else if (i > 0) break }
   return s
+}
+
+// "Tracking calendar events": upcoming Google Calendar events on the
+// board. Renders nothing when Google isn't connected.
+function GoogleCalendarSection() {
+  const authUser: any = useAuth()
+  const userId = authUser?.id
+  const [events, setEvents] = useState<any[] | null>(null)
+  useEffect(() => {
+    if (!userId) return
+    fetch(`${apiBase()}/api/google-calendar?userId=${userId}`)
+      .then(r => r.json())
+      .then(d => { if (d.events) setEvents(d.events.slice(0, 5)) })
+      .catch(() => {})
+  }, [userId])
+  if (!events || events.length === 0) return null
+  return (
+    <div className="bg-white rounded-2xl border border-stone-100 p-4 mb-4 shadow-sm">
+      <p className="text-[10px] font-semibold text-stone-500 uppercase tracking-wider mb-3">📅 Coming up from Google Calendar</p>
+      <div className="space-y-2">
+        {events.map((e: any) => {
+          const d = new Date(e.start)
+          const timeStr = e.allDay ? 'All day' : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+          const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+          return (
+            <div key={e.id} className="flex items-baseline gap-2 text-sm">
+              <span className="text-xs text-stone-400 flex-none">{dateStr} · {timeStr}</span>
+              <span className="text-stone-700 font-medium truncate">{e.title}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, updateGoal, removeGoal, toggleHabitDay, addHabit, updateHabit, removeHabit }: Props) {
@@ -222,7 +258,7 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
       {/* ═══ MY DAY ═══ */}
       {view === 'day' && (
         <>
-
+          <GoogleCalendarSection />
 
           {/* ─── Daily Habits ─── */}
           <div className="bg-gradient-to-br from-amber-50/60 to-orange-50/40 rounded-2xl border border-amber-100/60 p-4 mb-4">
