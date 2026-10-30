@@ -1,8 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
+import { encryptToken, verifyState } from './_google-crypto.js'
 
 export default async function handler(req, res) {
-  const { code, state: userId } = req.query
+  const { code, state } = req.query
   if (!code) return res.redirect('/?google_error=no_code')
+  const userId = verifyState(state || '')
+  if (!userId) return res.redirect('/?google_error=bad_state')
 
   const clientId = process.env.GOOGLE_CLIENT_ID
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET
@@ -48,11 +51,14 @@ export default async function handler(req, res) {
     })
     const profile = await profileRes.json()
 
-    // Store tokens
+    // Store tokens ENCRYPTED (never plaintext). Google only returns a
+    // refresh token on first consent — on a reconnect it may be absent,
+    // so preserve the stored one instead of wiping it with null.
+    const { data: existing } = await supabase.from('google_tokens').select('refresh_token').eq('user_id', userId || 'anonymous').single()
     const { error } = await supabase.from('google_tokens').upsert({
       user_id: userId || 'anonymous',
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token || null,
+      access_token: encryptToken(tokens.access_token),
+      refresh_token: tokens.refresh_token ? encryptToken(tokens.refresh_token) : (existing?.refresh_token || null),
       expires_at: new Date(Date.now() + (tokens.expires_in || 3600) * 1000).toISOString(),
       google_email: profile.email || null,
       updated_at: new Date().toISOString(),
