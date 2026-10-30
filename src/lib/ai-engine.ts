@@ -1,4 +1,5 @@
 import type { LifeItem, AppState } from '@/App'
+import { apiBase } from '@/lib/api-base'
 
 export function uid(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
@@ -646,7 +647,7 @@ export async function generateAIResponse(
   const appToken = Math.abs(hash).toString(36)
 
   try {
-    const res = await fetch('/api/chat', {
+    const res = await fetch(`${apiBase()}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-App-Token': appToken },
       body: JSON.stringify({ system: buildSystemPrompt(state, sharedLists), messages }),
@@ -669,14 +670,22 @@ function parseAIResponse(raw: string, userMessage: string, state: AppState): AIR
   // Strategy 1: Direct JSON parse
   try {
     const p = JSON.parse(text)
-    if (p.message) return { message: p.message, actions: Array.isArray(p.actions) ? p.actions : [] }
+    const msg = p.message || p.text || p.response || p.content
+    if (typeof msg === 'string' && msg.trim()) return { message: msg, actions: Array.isArray(p.actions) ? p.actions : [] }
+    // Actions without any message text — summarize them instead of
+    // falling through to a meaningless "I'm on it!" (this was the
+    // meal-plan loop: the model returned actions, the parser found
+    // no message field, and the user got a dead-end reply).
+    if (Array.isArray(p.actions) && p.actions.length > 0) return { message: summarizeActions(p.actions), actions: p.actions }
   } catch {}
 
   // Strategy 2: Strip markdown code fences
   const stripped = text.replace(/^```(?:json)?\s*\n?/gm, '').replace(/\n?```\s*$/gm, '').trim()
   try {
     const p = JSON.parse(stripped)
-    if (p.message) return { message: p.message, actions: Array.isArray(p.actions) ? p.actions : [] }
+    const msg = p.message || p.text || p.response || p.content
+    if (typeof msg === 'string' && msg.trim()) return { message: msg, actions: Array.isArray(p.actions) ? p.actions : [] }
+    if (Array.isArray(p.actions) && p.actions.length > 0) return { message: summarizeActions(p.actions), actions: p.actions }
   } catch {}
 
   // Strategy 3: Extract JSON object from mixed content
@@ -691,7 +700,9 @@ function parseAIResponse(raw: string, userMessage: string, state: AppState): AIR
     if (end > start) {
       try {
         const p = JSON.parse(text.substring(start, end + 1))
-        if (p.message) return { message: p.message, actions: Array.isArray(p.actions) ? p.actions : [] }
+        const msg = p.message || p.text || p.response || p.content
+        if (typeof msg === 'string' && msg.trim()) return { message: msg, actions: Array.isArray(p.actions) ? p.actions : [] }
+        if (Array.isArray(p.actions) && p.actions.length > 0) return { message: summarizeActions(p.actions), actions: p.actions }
       } catch {}
     }
   }
@@ -718,12 +729,29 @@ function parseAIResponse(raw: string, userMessage: string, state: AppState): AIR
     .replace(/[{}]/g, '')
     .trim()
 
-  if (plainText.length > 10) {
+  if (plainText.length > 0) {
     return { message: plainText, actions: smartDetectActions(userMessage, state) }
   }
 
-  // Strategy 6: Absolute last resort
-  return { message: text.replace(/[{}"\\]/g, '').replace(/message:|actions:|type:|payload:/g, '').trim() || "I'm on it!", actions: smartDetectActions(userMessage, state) }
+  // Strategy 6: Absolute last resort — never throw away real content
+  // for a canned line. Only fall back to "I'm on it!" when the model
+  // truly returned nothing usable.
+  const cleaned = text.replace(/[{}"\\]/g, '').replace(/message:|actions:|type:|payload:/g, '').trim()
+  if (cleaned) return { message: cleaned, actions: smartDetectActions(userMessage, state) }
+  const fallbackActions = smartDetectActions(userMessage, state)
+  if (fallbackActions.length > 0) return { message: summarizeActions(fallbackActions), actions: fallbackActions }
+  return { message: "I'm on it!", actions: [] }
+}
+
+// Turn a bare action list (no message text from the model) into a
+// readable reply so the user sees what actually happened.
+function summarizeActions(actions: AIAction[]): string {
+  const added = actions.filter(a => a.type === 'add_item' && a.payload?.text).map(a => `"${a.payload.text}"`)
+  if (added.length > 0) return `Done — added ${added.join(', ')} to your board.`
+  if (actions.some(a => a.type === 'add_person')) return 'Done — added them to your People.'
+  if (actions.some(a => a.type === 'add_habit')) return 'Done — added that habit.'
+  if (actions.some(a => a.type === 'complete_item')) return 'Done — marked that complete.'
+  return 'Done — I took care of that.'
 }
 
 function smartDetectActions(userMessage: string, state: AppState): AIAction[] {
@@ -773,6 +801,15 @@ function getFallbackResponse(userMessage: string, state: AppState): AIResponse {
       return { message: `I read through your journal and found ${tasks.length} thing${tasks.length > 1 ? 's' : ''} to act on:\n\n${insights.map(i => `• ${i}`).join('\n')}\n\nAdded to your board!`, actions: tasks }
     }
     return { message: `I've read your journal entries, ${name}. No explicit tasks jumped out, but I noticed some themes. Keep journaling and I'll surface actionable insights as patterns emerge.`, actions: [] }
+  }
+
+  // Meal-plan answers must not re-trigger the meal questions. When the
+  // AI is unreachable the fallback used to ask the same questions
+  // again because the answer itself contains "cook" — an endless loop.
+  // If we already asked, say so honestly instead of re-asking.
+  const lastAssistant = [...(state.chatHistory || [])].reverse().find(m => m.role === 'assistant')
+  if ((t.includes('dinner') || t.includes('meal plan') || t.includes('cook')) && lastAssistant?.content.includes('dietary restrictions')) {
+    return { message: `Got it — thanks for the details, ${name}. I can't reach the meal-planning brain right now, so I can't build the full plan yet. Try again in a moment and I'll get it done.`, actions: [] }
   }
 
   if (t.includes('dinner') || t.includes('meal plan') || t.includes('cook')) {
