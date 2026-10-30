@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { encryptToken, decryptToken } from './_google-crypto.js'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL,
@@ -8,32 +9,34 @@ const supabase = createClient(
 async function getValidToken(userId) {
   const { data } = await supabase.from('google_tokens').select('*').eq('user_id', userId).single()
   if (!data) return null
+  const refreshToken = decryptToken(data.refresh_token)
+  if (!refreshToken) return null
 
-  // Check if token is expired
-  if (new Date(data.expires_at) < new Date()) {
-    // Refresh token
-    const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        refresh_token: data.refresh_token,
-        client_id: process.env.GOOGLE_CLIENT_ID,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET,
-        grant_type: 'refresh_token',
-      }),
-    })
-    const newTokens = await refreshRes.json()
-    if (!newTokens.access_token) return null
+  // Reuse the stored access token while it is still valid.
+  const storedAccess = decryptToken(data.access_token)
+  if (storedAccess && new Date(data.expires_at) >= new Date()) return storedAccess
 
-    await supabase.from('google_tokens').update({
-      access_token: newTokens.access_token,
-      expires_at: new Date(Date.now() + newTokens.expires_in * 1000).toISOString(),
-      updated_at: new Date().toISOString(),
-    }).eq('user_id', userId)
+  // Refresh token
+  const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      refresh_token: refreshToken,
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      grant_type: 'refresh_token',
+    }),
+  })
+  const newTokens = await refreshRes.json()
+  if (!newTokens.access_token) return null
 
-    return newTokens.access_token
-  }
-  return data.access_token
+  await supabase.from('google_tokens').update({
+    access_token: encryptToken(newTokens.access_token),
+    expires_at: new Date(Date.now() + newTokens.expires_in * 1000).toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq('user_id', userId)
+
+  return newTokens.access_token
 }
 
 export default async function handler(req, res) {
@@ -72,16 +75,22 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST') {
       // Create a new event
-      const { title, date, startTime, endTime, description, location } = req.body
+      const { title, date, startTime, endTime, description, location, attendees, createMeet } = req.body
       if (!title) return res.status(400).json({ error: 'Missing event title' })
 
       let eventBody = { summary: title }
       if (description) eventBody.description = description
       if (location) eventBody.location = location
+      if (Array.isArray(attendees) && attendees.length > 0) {
+        eventBody.attendees = attendees.filter((a) => typeof a === 'string' && a.includes('@')).map((email) => ({ email: email.trim() }))
+      }
+      if (createMeet) {
+        eventBody.conferenceData = { createRequest: { requestId: `lifepilot-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` } }
+      }
 
       if (startTime && date) {
         // Timed event
-        const tz = req.body.timezone || 'America/New_York'
+        const tz = req.body.timezone || 'America/Chicago'
         eventBody.start = { dateTime: `${date}T${startTime}:00`, timeZone: tz }
         eventBody.end = { dateTime: `${date}T${endTime || startTime.replace(/(\d+):/, (_, h) => `${(parseInt(h) + 1) % 24}:`)}:00`, timeZone: tz }
       } else if (date) {
@@ -95,7 +104,7 @@ export default async function handler(req, res) {
       }
 
       const createRes = await fetch(
-        'https://www.googleapis.com/calendar/v3/calendars/primary/events',
+        'https://www.googleapis.com/calendar/v3/calendars/primary/events' + (createMeet ? '?conferenceDataVersion=1' : ''),
         {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -103,7 +112,8 @@ export default async function handler(req, res) {
         }
       )
       const created = await createRes.json()
-      return res.status(200).json({ event: { id: created.id, title: created.summary, start: created.start?.dateTime || created.start?.date } })
+      const meetLink = created.hangoutLink || created.conferenceData?.entryPoints?.find((p) => p.entryPointType === 'video')?.uri || null
+      return res.status(200).json({ event: { id: created.id, title: created.summary, start: created.start?.dateTime || created.start?.date, hangoutLink: meetLink } })
     }
   } catch (err) {
     console.error('[Calendar] Error:', err.message)
