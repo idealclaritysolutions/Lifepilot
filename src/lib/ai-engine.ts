@@ -8,7 +8,7 @@ export function uid(): string {
 // ─── ACTION TYPES ──────────────────────────────────────────────────
 
 export interface AIAction {
-  type: 'add_item' | 'update_item' | 'complete_item' | 'remove_item' | 'snooze_item' | 'add_multiple_items' | 'clear_completed' | 'add_person' | 'update_person' | 'remove_person' | 'add_event_to_person' | 'set_timer' | 'add_to_shared_list' | 'create_shared_list' | 'web_search' | 'add_habit' | 'complete_habit' | 'remove_habit' | 'update_habit' | 'add_journal' | 'delete_journal' | 'set_eisenhower' | 'add_goal' | 'update_goal' | 'remove_goal' | 'add_task_to_goal' | 'add_habit_to_goal' | 'link_task_to_goal' | 'link_habit_to_goal' | 'complete_goal'
+  type: 'add_item' | 'update_item' | 'complete_item' | 'remove_item' | 'snooze_item' | 'add_multiple_items' | 'clear_completed' | 'add_person' | 'update_person' | 'remove_person' | 'add_event_to_person' | 'set_timer' | 'add_to_shared_list' | 'create_shared_list' | 'web_search' | 'add_habit' | 'complete_habit' | 'remove_habit' | 'update_habit' | 'add_journal' | 'delete_journal' | 'set_eisenhower' | 'add_goal' | 'update_goal' | 'remove_goal' | 'add_task_to_goal' | 'add_habit_to_goal' | 'link_task_to_goal' | 'link_habit_to_goal' | 'complete_goal' | 'google_create_event' | 'google_check_calendar' | 'google_check_email'
   payload: any
 }
 
@@ -556,35 +556,29 @@ ${(state.habits || []).map(h => {
   return `- [id:${h.id}] ${h.emoji} "${h.name}" (${h.frequency}) — streak: ${streak}d, today: ${doneToday ? 'done' : 'not done'}${parentGoal ? ` → goal: ${parentGoal.title}` : ''}`
 }).join('\n') || 'No habits.'}
 
-CALENDAR EVENTS & MEETINGS:
-When a user wants to schedule something, create a task with the due date AND provide calendar links for ALL major platforms so they can add it with one tap:
-
-Format your response like this:
-"I've added this to your board! Add it to your calendar:
-→ [Google Calendar](https://calendar.google.com/calendar/render?action=TEMPLATE&text=URL_ENCODED_TITLE&dates=YYYYMMDDTHHMMSS/YYYYMMDDTHHMMSS&details=URL_ENCODED_DETAILS)
-→ [Outlook](https://outlook.live.com/calendar/0/deeplink/compose?subject=URL_ENCODED_TITLE&startdt=YYYY-MM-DDTHH:MM:SS&enddt=YYYY-MM-DDTHH:MM:SS&body=URL_ENCODED_DETAILS)
-→ [Yahoo Calendar](https://calendar.yahoo.com/?v=60&title=URL_ENCODED_TITLE&st=YYYYMMDDTHHMMSS&et=YYYYMMDDTHHMMSS&desc=URL_ENCODED_DETAILS)"
-
-Rules for calendar links:
-- URL-encode the title and details (spaces become %20, etc.)
-- If no end time is given, default to 1 hour after start time
-- If no time is given, use all-day event format (just YYYYMMDD without time)
-- Always provide all three calendar links (Google, Outlook, Yahoo) so the user can pick their platform
-- For Outlook desktop users, the Outlook.com link works — they'll be redirected
+GOOGLE CALENDAR:
+- When the user asks what's on their calendar ("what's on my calendar", "what's coming up", "do I have anything Friday"), emit:
+  google_check_calendar: {"type":"google_check_calendar","payload":{}}
+- When the user asks to schedule, create, or set up an event or meeting, emit google_create_event — do NOT just paste calendar links:
+  google_create_event: {"type":"google_create_event","payload":{"title":"...","date":"YYYY-MM-DD","startTime":"HH:MM","endTime":"HH:MM","description":"...","location":"...","attendees":["email1","email2"],"createMeet":true}}
+  - date is YYYY-MM-DD; startTime/endTime are 24-hour HH:MM. If no end time is given, end = start + 1 hour. If no time is given, omit startTime/endTime for an all-day event.
+  - attendees: email addresses the user names; omit if none.
+  - createMeet: true when it's a meeting or call with other people and no other meeting link was given — this creates a Google Meet link on the event.
+  - Also create a board task for it (add_item) so it shows on their board.
+  - If the user isn't connected to Google Calendar, the app will tell them to connect in Settings — don't paste calendar links instead.
+- Only provide manual calendar template links (Google/Outlook/Yahoo) if the user explicitly asks for a link.
 
 MEETINGS (Zoom, Teams, Google Meet):
-- You CANNOT create actual Zoom, Teams, or Google Meet meeting links — those require separate authentication
-- If a user says "set up a Zoom meeting" or "create a Teams call", explain: "I can't generate meeting links directly, but here's what you can do:" then give them quick instructions:
-  - Zoom: "Open Zoom → Schedule Meeting → copy the link and paste it here — I'll add it to your task"
+- Google Meet links CAN be created: use google_create_event with createMeet: true.
+- Zoom/Teams links cannot be generated. If the user says "set up a Zoom meeting" or "create a Teams call", explain: "I can't generate that link directly, but here's what you can do:" then give them quick instructions:
+  - Zoom: "Open Zoom → Schedule Meeting → copy the link and paste it here — I'll add it to your event"
   - Teams: "Open Teams → Calendar → New Meeting → copy the join link and paste it here"
-  - Google Meet: "Go to meet.google.com → Start a meeting → copy the link"
-- If the user pastes a meeting URL (zoom.us, teams.microsoft.com, meet.google.com), include it in the task description and in the calendar event details field
-- When creating a calendar event that includes a meeting link, put the meeting URL in the details/body field of the calendar link
+- If the user pastes a meeting URL (zoom.us, teams.microsoft.com, meet.google.com), include it in the task description and in the event description.
 
 Examples:
-- "Schedule dentist at 2pm Friday" → create task + all 3 calendar links
-- "Set up a team meeting for Monday at 10am on Zoom" → create task + calendar links + instruct to paste Zoom link
-- "Remind me about the call Tuesday 3pm, here's the link: https://zoom.us/j/123" → create task with link in notes + calendar links with Zoom URL in details
+- "Schedule dentist at 2pm Friday" → google_create_event + add_item task
+- "Set up a team meeting for Monday at 10am" → google_create_event with createMeet: true + add_item task
+- "Remind me about the call Tuesday 3pm, here's the link: https://zoom.us/j/123" → google_create_event with the Zoom URL in the description + add_item task with the link in notes
 
 GUIDED PLAN COACHING INTELLIGENCE (only for enterprise/Guided tier users):
 ${state.subscription.tier === 'enterprise' ? `This user is on the GUIDED plan — they have a personal coach. Your role is ELEVATED:
