@@ -43,6 +43,7 @@ import { MessageCircle, LayoutGrid, Bell, BookOpen, Users, Flame, Settings as Se
 import { isAdminEmail } from '@/lib/admin'
 
 interface Props {
+  trialBannerActive?: boolean
   state: AppState
   setState: React.Dispatch<React.SetStateAction<AppState>>
   addItem: (item: LifeItem) => void
@@ -74,7 +75,7 @@ interface Props {
 }
 
 export function MainApp(props: Props) {
-  const { state, setState, addItem, updateItem, removeItem, addChat, addJournalEntry, deleteJournalEntry, updateJournalEntry, updateProfile, setUserLocation, addPerson, updatePerson, removePerson, addHabit, toggleHabitDay, removeHabit, updateHabit, addGoal, updateGoal, removeGoal, addPurchase, applyPromoCode, setSubscription, incrementMessageCount, notifications, locationHook, onReset } = props
+  const { trialBannerActive, state, setState, addItem, updateItem, removeItem, addChat, addJournalEntry, deleteJournalEntry, updateJournalEntry, updateProfile, setUserLocation, addPerson, updatePerson, removePerson, addHabit, toggleHabitDay, removeHabit, updateHabit, addGoal, updateGoal, removeGoal, addPurchase, applyPromoCode, setSubscription, incrementMessageCount, notifications, locationHook, onReset } = props
   
   const [activeTab, setActiveTab] = useState(() => {
     try {
@@ -189,6 +190,7 @@ export function MainApp(props: Props) {
       {/* Post-onboarding setup prompt — shows once if notifications/location not enabled */}
       {(!state.profile.notificationsEnabled || !state.profile.locationEnabled) && (
         <SetupPrompt
+          paused={trialBannerActive}
           onGoToSettings={() => setShowSettings(true)}
           onSkip={() => {}}
         />
