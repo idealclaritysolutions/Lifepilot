@@ -4,18 +4,23 @@ import { Bell, MapPin, ArrowRight, X } from 'lucide-react'
 interface Props {
   onGoToSettings: () => void
   onSkip: () => void
+  // While the trial "Welcome gift" banner is on screen, this prompt
+  // waits — it used to pop over the banner 1.5s after launch and
+  // make the banner look like it vanished.
+  paused?: boolean
 }
 
-export function SetupPrompt({ onGoToSettings, onSkip }: Props) {
+export function SetupPrompt({ onGoToSettings, onSkip, paused }: Props) {
   const [show, setShow] = useState(false)
 
   useEffect(() => {
     const seen = localStorage.getItem('lp-setup-prompt-seen')
-    if (!seen) {
-      // Delay so it doesn't overlap with install prompt
-      setTimeout(() => setShow(true), 1500)
-    }
-  }, [])
+    if (seen) return
+    if (paused) return
+    // Delay so it doesn't overlap with install prompt
+    const t = setTimeout(() => setShow(true), 1500)
+    return () => clearTimeout(t)
+  }, [paused])
 
   const dismiss = () => {
     setShow(false)
