@@ -169,24 +169,17 @@ interface SpeechRecognitionResultEventLike {
 export async function initNativeNotifications(): Promise<void> {
   if (!isNative()) return
   try {
-    const { PushNotifications } = await import('@capacitor/push-notifications')
     const { LocalNotifications } = await import('@capacitor/local-notifications')
 
     await LocalNotifications.requestPermissions()
 
-    const perm = await PushNotifications.requestPermissions()
-    if (perm.receive === 'granted') {
-      await PushNotifications.addListener('registration', (token) => {
-        // TODO(backend): send token.value to the server once an
-        // APNs/FCM delivery pipeline exists (today the server only
-        // speaks web-push). Stored locally so it can be picked up then.
-        try { localStorage.setItem('lp-native-push-token', token.value) } catch { /* noop */ }
-      })
-      await PushNotifications.addListener('registrationError', (err) => {
-        console.error('[native] Push registration error:', err)
-      })
-      await PushNotifications.register()
-    }
+    // Push registration is DELIBERATELY skipped until Firebase is
+    // configured (google-services.json + FCM project). The push
+    // plugin's register() calls FirebaseMessaging.getInstance(),
+    // which throws when no default FirebaseApp exists — on build 2
+    // that crashed the app on launch. Re-enable push registration
+    // once FCM is set up; server-side push delivery doesn't exist
+    // yet anyway, so nothing is lost by waiting.
   } catch (err) {
     console.error('[native] Notification init failed:', err)
   }
