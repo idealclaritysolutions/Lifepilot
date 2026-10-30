@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { decryptToken } from './_google-crypto.js'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL,
@@ -11,10 +12,11 @@ export default async function handler(req, res) {
   const { userId } = req.body
   if (!userId) return res.status(400).json({ error: 'Missing userId' })
 
-  // Revoke the token
-  const { data } = await supabase.from('google_tokens').select('access_token').eq('user_id', userId).single()
-  if (data?.access_token) {
-    try { await fetch(`https://oauth2.googleapis.com/revoke?token=${data.access_token}`, { method: 'POST' }) } catch {}
+  // Revoke the token (decrypt first — tokens are stored encrypted)
+  const { data } = await supabase.from('google_tokens').select('access_token, refresh_token').eq('user_id', userId).single()
+  const tokenToRevoke = decryptToken(data?.access_token) || decryptToken(data?.refresh_token)
+  if (tokenToRevoke) {
+    try { await fetch(`https://oauth2.googleapis.com/revoke?token=${tokenToRevoke}`, { method: 'POST' }) } catch {}
   }
 
   await supabase.from('google_tokens').delete().eq('user_id', userId)
