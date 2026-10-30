@@ -8,7 +8,6 @@ import { LegalPage } from '@/components/LegalPages'
 import { AccountSection, useAuth } from '@/components/AuthGate'
 
 const IS_STORE_BUILD = import.meta.env.VITE_STORE_BUILD === 'true'
-
 const ENERGY_DRAINERS = [
   { id: 'meals', label: 'Meal Planning', emoji: '🍽️' },
   { id: 'health', label: 'Health & Wellness', emoji: '💪' },
@@ -51,17 +50,17 @@ export function Settings({ state, notifications, locationHook, updateProfile, se
   // Check Google connection status
   useEffect(() => {
     if (user?.id) {
-      fetch(`/api/google-status?userId=${user.id}`).then(r => r.json()).then(d => {
+      fetch(`${apiBase()}/api/google-status?userId=${user.id}`).then(r => r.json()).then(d => {
         if (d.connected) setGoogleEmail(d.email)
       }).catch(() => {})
     }
     // Check URL params for connection callback
     const params = new URLSearchParams(window.location.search)
     if (params.get('google_connected') === 'true') {
-      toast.success('Google Calendar & Gmail connected!')
+      toast.success('Google Calendar connected!')
       window.history.replaceState({}, '', window.location.pathname)
       if (user?.id) {
-        fetch(`/api/google-status?userId=${user.id}`).then(r => r.json()).then(d => {
+        fetch(`${apiBase()}/api/google-status?userId=${user.id}`).then(r => r.json()).then(d => {
           if (d.connected) setGoogleEmail(d.email)
         }).catch(() => {})
       }
@@ -71,6 +70,25 @@ export function Settings({ state, notifications, locationHook, updateProfile, se
       window.history.replaceState({}, '', window.location.pathname)
     }
   }, [user?.id])
+
+  const handleGoogleConnect = () => {
+    if (!user?.id) return
+    const url = `${apiBase()}/api/google-auth?userId=${encodeURIComponent(user.id)}`
+    // On native the auth flow runs in the system browser; tokens live
+    // server-side keyed by userId, so returning to the app shows the
+    // connection on the next status check.
+    if (isNative()) window.open(url, '_blank')
+    else window.location.href = url
+  }
+
+  const handleGoogleDisconnect = async () => {
+    if (!user?.id) return
+    try {
+      await fetch(`${apiBase()}/api/google-disconnect`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id }) })
+      setGoogleEmail(null)
+      toast.success('Google Calendar disconnected')
+    } catch { toast.error('Could not disconnect. Try again.') }
+  }
 
   if (legalPage) {
     return <LegalPage page={legalPage} onClose={() => setLegalPage(null)} />
@@ -320,21 +338,23 @@ export function Settings({ state, notifications, locationHook, updateProfile, se
               </button>
             </div>
 
-            {/* Google Integration — Coming Soon (hidden in store builds) */}
-            {!IS_STORE_BUILD && (
-              <div className="flex items-center justify-between opacity-60">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center">
-                    <Calendar className="w-5 h-5 text-purple-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-stone-700">Google Calendar & Gmail</p>
-                    <p className="text-xs text-stone-600">Coming soon</p>
-                  </div>
+            {/* Google Integration */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center">
+                  <Calendar className="w-5 h-5 text-purple-600" />
                 </div>
-                <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-stone-100 text-stone-400">Soon</span>
+                <div>
+                  <p className="text-sm font-medium text-stone-700">Google Calendar</p>
+                  <p className="text-xs text-stone-600">{googleEmail ? `Connected as ${googleEmail}` : 'Create events from chat and see upcoming events'}</p>
+                </div>
               </div>
-            )}
+              {googleEmail ? (
+                <button onClick={handleGoogleDisconnect} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-stone-100 text-stone-600">Disconnect</button>
+              ) : (
+                <button onClick={handleGoogleConnect} disabled={!user?.id} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600 text-white disabled:opacity-40">{user?.id ? 'Connect' : 'Sign in first'}</button>
+              )}
+            </div>
           </div>
         </div>
 
