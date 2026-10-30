@@ -5,6 +5,7 @@ import type { AppState, JournalEntry } from '@/App'
 import { hasFeature } from '@/App'
 import { uid } from '@/lib/ai-engine'
 import { isNative, startDictation, type DictationSession } from '@/lib/native'
+import { apiBase } from '@/lib/api-base'
 import { BookOpen, ChevronRight, Sparkles, Mic, MicOff, Search, X, TrendingUp, Calendar, Trash2, Pencil, Lock, Volume2, VolumeX } from 'lucide-react'
 
 interface Props {
@@ -41,9 +42,9 @@ const THEME_DEFS: { id: string; label: string; emoji: string; color: string; pat
   { id: 'impact', label: 'Making an Impact', emoji: '🌟', color: 'bg-cyan-50 text-cyan-700', patterns: /helped (someone|them|her|him|my|a |people)|made a difference|changed .{0,15}life|mentor|coach|support(ed|ing) (them|her|him|my|people|client)|client.{0,20}(grateful|thank)|gave back|volunteer|inspir(ed|ing) (someone|them|people|others)|empower|guide|lift(ed)?|encourage/i },
   { id: 'resilience', label: 'Resilience & Grit', emoji: '💪', color: 'bg-blue-50 text-blue-700', patterns: /tough (day|week|time)|hard but|challeng|difficult|struggle|push(ed)? through|kept going|didn.t give up|persever|endur|bounce back|overcame|despite|survived|managed to|got through|hung in|stayed strong|never quit|powered through/i },
   { id: 'stress', label: 'Stress & Pressure', emoji: '😤', color: 'bg-red-50 text-red-700', patterns: /stress|overwhelm|anxious|anxiety|pressure|too much|can.t handle|burned out|burnout|deadlin|frantic|drowning|stretched thin|breaking point|weight on|so much going on/i },
-  { id: 'relationships', label: 'Relationships', emoji: '❤️', color: 'bg-rose-50 text-rose-700', patterns: /friend|family|partner|spouse|husband|wife|love|relationship|connect|deep conversation|support(ed|ive)|together|bond|trust|miss (them|her|him|you)|quality time|meaningful|close to|opened up|vulnerab/i },
-  { id: 'health', label: 'Health & Wellness', emoji: '🧘', color: 'bg-teal-50 text-teal-700', patterns: /exercise|workout|gym|sleep|tired|energy|meditat|yoga|walk(ed)?|run |running|health|water|diet|weight|rest|heal|stretch|physic|body|mental health|therapy|therap/i },
-  { id: 'career', label: 'Work & Career', emoji: '💼', color: 'bg-indigo-50 text-indigo-700', patterns: /work |job |career|project|meeting|boss|manager|interview|client|deadline|team |colleague|office|company|business|professional|presentation|pitch|strategy/i },
+  { id: 'relationships', label: 'Relationships', emoji: '❤️', color: 'bg-rose-50 text-rose-700', patterns: /friend|family|partner|spouse|husband|wife|love|relationship|message|whatsapp|text(ed|ing)?|connect|deep conversation|support(ed|ive)|together|bond|trust|miss (them|her|him|you)|quality time|meaningful|close to|opened up|vulnerab/i },
+  { id: 'health', label: 'Health & Wellness', emoji: '🧘', color: 'bg-teal-50 text-teal-700', patterns: /exercise|workout|gym|sleep|tired|energy|meditat|yoga|walk(ed)?|run |running|health|water|diet|weight|rest|heal|eat\w*|food|meal|allerg\w*|recover\w*|sick|illness|medicine|medication|doctor|pain|headache|stretch|physic|body|mental health|therapy|therap/i },
+  { id: 'career', label: 'Work & Career', emoji: '💼', color: 'bg-indigo-50 text-indigo-700', patterns: /\bwork\w*|\bjob\b|career|project|meeting|boss|manager|interview|client|deadline|\bteam\b|colleague|office|company|business|professional|presentation|pitch|strategy/i },
   { id: 'creativity', label: 'Creativity & Ideas', emoji: '💡', color: 'bg-yellow-50 text-yellow-700', patterns: /idea|creat(ed|ive|ing)|inspir(ed|ation)|build|design|writ(e|ing|ten)|art |music|imagine|innovat|brainstorm|concept|vision|invent|prototype|experiment/i },
   { id: 'finance', label: 'Money & Finance', emoji: '💰', color: 'bg-green-50 text-green-700', patterns: /money|budget|sav(e|ed|ing)|spend|invest|bill|debt|income|salary|financ|afford|price|cost|paid|earning|revenue|profit|net worth/i },
   { id: 'selfcare', label: 'Self-Care', emoji: '🧡', color: 'bg-orange-50 text-orange-700', patterns: /self.care|relax|treat myself|pamper|boundar(y|ies)|said no|alone time|recharge|decompress|take a break|indulg|permission to|guilt.free|chose myself|me time/i },
@@ -87,7 +88,7 @@ function quickSummary(content: string): string[] {
 async function generateAISummary(content: string, title?: string): Promise<string[]> {
   try {
     const titleContext = title ? `\nTitle: "${title}"` : ''
-    const res = await fetch('/api/chat', {
+    const res = await fetch(`${apiBase()}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -140,7 +141,7 @@ const ALL_THEMES = THEME_DEFS.map(t => ({ id: t.id, label: t.label, emoji: t.emo
 // AI-powered reflection that actually responds to what was written
 async function generateAIReflection(content: string, mood: JournalEntry['mood'], themes: string[]): Promise<string> {
   try {
-    const res = await fetch('/api/chat', {
+    const res = await fetch(`${apiBase()}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -200,7 +201,7 @@ function getAIReflection(content: string, mood: JournalEntry['mood'], themes: st
 // AI title generation for entries without a user-provided title
 async function generateAITitle(content: string): Promise<string> {
   try {
-    const res = await fetch('/api/chat', {
+    const res = await fetch(`${apiBase()}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -228,7 +229,7 @@ async function generateAITitle(content: string): Promise<string> {
 async function cleanTranscriptWithAI(text: string): Promise<string> {
   if (text.trim().length < 30) return text
   try {
-    const res = await fetch('/api/chat', {
+    const res = await fetch(`${apiBase()}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -302,6 +303,9 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
   const [view, setView] = useState<'home' | 'write' | 'saved' | 'recap' | 'edit' | 'read'>('home')
   const [content, setContent] = useState('')
   const [title, setTitle] = useState('')
+  // Voice failures used to fail silently (tap mic → nothing). The
+  // real error is now shown under the mic button.
+  const [voiceError, setVoiceError] = useState<string | null>(null)
   const [showDuplicates, setShowDuplicates] = useState(false)
   const [mood, setMood] = useState<JournalEntry['mood']>(undefined)
   const [currentPrompt] = useState(() => PROMPTS[Math.floor(Math.random() * PROMPTS.length)])
@@ -414,7 +418,7 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
 
   const launchRecognition = () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SR) return
+    if (!SR) { setVoiceError('Voice dictation is not available in this browser.'); return }
 
     const rec = new SR()
     const isAndroid = /android/i.test(navigator.userAgent)
@@ -451,6 +455,7 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
     rec.onerror = (e: any) => {
       if (e.error === 'no-speech' || e.error === 'aborted') return
       console.warn('Voice error:', e.error)
+      setVoiceError(`Microphone error: ${e.error}. Check your microphone permission and try again.`)
     }
 
     rec.onend = () => {
@@ -478,6 +483,7 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
   }
 
   const startVoice = () => {
+    setVoiceError(null)
     // Store builds: native dictation. Partials update the entry live.
     if (isNative()) {
       textBeforeVoiceRef.current = content.trim()
@@ -492,7 +498,7 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
           nativeTextRef.current = addSmartPunctuation(combined)
           setContent(nativeTextRef.current)
         },
-        onError: () => setIsListening(false),
+        onError: (msg) => { setIsListening(false); setVoiceError(msg) },
         onEnd: () => setIsListening(false),
       }).then((session) => {
         if (!session) { setIsListening(false); return }
@@ -1079,6 +1085,9 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
             {view === 'edit' ? 'Save changes' : 'Save & reflect ✨'}
           </button>
         </div>
+        {voiceError && (
+          <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2 mt-3">{voiceError}</p>
+        )}
       </div>
     )
   }
