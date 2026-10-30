@@ -5,6 +5,7 @@ import type { AppState, LifeItem } from '@/App'
 import { hasFeature } from '@/App'
 import { generateAIResponse, detectCategory, uid, QUICK_ACTIONS, type AIAction } from '@/lib/ai-engine'
 import { isNative, startDictation, type DictationSession } from '@/lib/native'
+import { apiBase } from '@/lib/api-base'
 import { useDocumentUpload } from '@/hooks/use-document-upload'
 import { useCalendar } from '@/hooks/use-calendar'
 import { getMyHouseholds, addSharedItem, createHousehold, type HouseholdInfo } from '@/lib/supabase'
@@ -439,19 +440,20 @@ export function ChatView(props: Props) {
           break
         }
         case 'google_create_event': {
-          const { title, date, startTime, endTime, description, location } = action.payload || {}
+          const { title, date, startTime, endTime, description, location, attendees, createMeet } = action.payload || {}
           if (title && date) {
             try {
-              const res = await fetch('/api/google-calendar', {
+              const res = await fetch(`${apiBase()}/api/google-calendar`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, title, date, startTime, endTime, description, location, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
+                body: JSON.stringify({ userId, title, date, startTime, endTime, description, location, attendees, createMeet, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
               })
               const data = await res.json()
               if (data.event) {
-                log.push(`📅 Added to Google Calendar: "${title}"`)
+                log.push(`📅 Added to Google Calendar: "${title}"${data.event.hangoutLink ? ` (Meet: ${data.event.hangoutLink})` : ''}`)
               } else if (data.needsAuth) {
                 log.push(`⚠️ Google not connected — go to Settings → Integrations`)
+                addChat({ role: 'assistant', content: "You haven't connected Google Calendar yet. Go to **Settings → Integrations** and tap **Connect** next to Google Calendar. It takes 10 seconds!" })
               } else {
                 log.push(`⚠️ Couldn't add to calendar`)
               }
@@ -461,7 +463,7 @@ export function ChatView(props: Props) {
         }
         case 'google_check_calendar': {
           try {
-            const res = await fetch(`/api/google-calendar?userId=${userId}`)
+            const res = await fetch(`${apiBase()}/api/google-calendar?userId=${userId}`)
             const data = await res.json()
             if (data.needsAuth) {
               addChat({ role: 'assistant', content: "You haven't connected Google Calendar yet. Go to **Settings → Integrations** and tap **Connect** next to Google Calendar & Gmail. It takes 10 seconds!" })
@@ -484,7 +486,7 @@ export function ChatView(props: Props) {
         case 'google_check_email': {
           try {
             const query = action.payload?.query || 'is:unread'
-            const res = await fetch(`/api/google-gmail?userId=${userId}&q=${encodeURIComponent(query)}&max=8`)
+            const res = await fetch(`${apiBase()}/api/google-gmail?userId=${userId}&q=${encodeURIComponent(query)}&max=8`)
             const data = await res.json()
             if (data.needsAuth) {
               addChat({ role: 'assistant', content: "You haven't connected Gmail yet. Go to **Settings → Integrations** and tap **Connect** next to Google Calendar & Gmail." })
