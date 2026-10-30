@@ -40,7 +40,7 @@ function simpleHash(str) {
 export default async function handler(req, res) {
   // CORS — restrict to known origins in production
   const origin = req.headers.origin || '';
-  const allowedOrigins = ['https://getlifepilot.app', 'http://localhost:5173', 'http://localhost:4173'];
+  const allowedOrigins = ['https://getlifepilot.app', 'http://localhost:5173', 'http://localhost:4173', 'capacitor://localhost', 'https://localhost'];
   const isAllowed = allowedOrigins.some(o => origin.startsWith(o)) || origin.includes('vercel.app');
   
   res.setHeader('Access-Control-Allow-Origin', isAllowed ? origin : allowedOrigins[0]);
