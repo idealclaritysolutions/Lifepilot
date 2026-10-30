@@ -287,8 +287,55 @@ function loadState(): AppState {
   return DEFAULT_STATE
 }
 
+// ─── Sign-in merge helpers: sign-in must NEVER silently drop local work ───
+
+// Union two collections by id. Same-id conflicts go to the newer side
+// (preferLocal = local state is newer than the cloud copy).
+function unionById(cloudArr: any[] | undefined, localArr: any[] | undefined, preferLocal: boolean): any[] {
+  const out = [...(cloudArr || [])]
+  for (const li of localArr || []) {
+    const idx = out.findIndex((ci: any) => ci.id === li.id)
+    if (idx === -1) out.push(li)
+    else if (preferLocal) out[idx] = li
+  }
+  return out
+}
+
+function subscriptionRank(sub: any): number {
+  if (!sub) return -1
+  if (sub.tier === 'enterprise') return 3
+  if (sub.tier === 'premium') return 2
+  if (sub.tier === 'pro') return 1
+  return 0
+}
+
+// Pick the subscription that survives a sign-in. Higher tier wins; on a
+// tie an ACTIVE trial beats an EXPIRED trial, and a paid tier beats a
+// trial. A sign-in must never silently downgrade the user (the bug
+// that ate a fresh device trial when the cloud copy was free).
+function pickSubscription(localSub: any, cloudSub: any): any {
+  if (!localSub) return cloudSub
+  if (!cloudSub) return localSub
+  const lr = subscriptionRank(localSub), cr = subscriptionRank(cloudSub)
+  if (lr > cr) return localSub
+  if (cr > lr) return cloudSub
+  const now = Date.now()
+  const localActive = localSub.isTrial && localSub.trialEndsAt && new Date(localSub.trialEndsAt).getTime() > now
+  const cloudActive = cloudSub.isTrial && cloudSub.trialEndsAt && new Date(cloudSub.trialEndsAt).getTime() > now
+  if (localActive && !cloudActive && cloudSub.isTrial) return localSub
+  return cloudSub
+}
+
 function App() {
   const [state, setState] = useState<AppState>(loadState)
+  // Trial-banner dismissal lives here (not inside TrialBanner) so the
+  // "One quick thing" prompt can wait for the banner to be dismissed
+  // first — the banner used to vanish under the prompt after 1.5s.
+  const [trialBannerDismissed, setTrialBannerDismissed] = useState(() => localStorage.getItem('lp-trial-banner-dismissed') === '1')
+  const dismissTrialBanner = useCallback(() => {
+    setTrialBannerDismissed(true)
+    localStorage.setItem('lp-trial-banner-dismissed', '1')
+  }, [])
   const notifications = useNotifications()
   const locationHook = useLocation()
   const { isLoaded: authLoaded, isSignedIn, user: authUser, userName, isRecovery } = useAuth()
@@ -365,8 +412,13 @@ function App() {
 
     const syncCloud = async () => {
       
-      // CRITICAL: If a different user signed in, clear local state first
+      // CRITICAL: If a different user signed in, stash the local state
+      // first (so nothing is silently destroyed) and then clear it.
       if (isDifferentUser) {
+        try {
+          const existing = localStorage.getItem(STORAGE_KEY)
+          if (existing) localStorage.setItem('lp-previous-user-backup', existing)
+        } catch {}
         localStorage.removeItem(STORAGE_KEY)
         localStorage.removeItem('lp-trial-banner-dismissed')
         localStorage.removeItem('lp-morning-brief-' + new Date().toDateString())
@@ -379,28 +431,23 @@ function App() {
       
       if (cloudData && cloudData.profile?.onboarded) {
         if (!isDifferentUser) {
-          // Same user — check if local has newer changes to merge
+          // Same user — ALWAYS union by id, never silently drop local
+          // work. Timestamps only decide same-id conflicts, and the
+          // subscription never downgrades on sign-in.
           const localData = loadState()
           const cloudTime = new Date(cloudData.lastSyncedAt || 0).getTime()
           const localTime = new Date(localData.lastSyncedAt || 0).getTime()
-          
-          if (localTime > cloudTime && localData.profile?.onboarded) {
-            const mergedItems = [...(cloudData.items || [])];
-            (localData.items || []).forEach((li: any) => { if (!mergedItems.some((ci: any) => ci.id === li.id)) mergedItems.push(li) })
-            const mergedJournal = [...(cloudData.journal || [])];
-            (localData.journal || []).forEach((lj: any) => { if (!mergedJournal.some((cj: any) => cj.id === lj.id)) mergedJournal.push(lj) })
-            const mergedPeople = [...(cloudData.people || [])];
-            (localData.people || []).forEach((lp: any) => { if (!mergedPeople.some((cp: any) => cp.id === lp.id)) mergedPeople.push(lp) })
-            const mergedHabits = [...(cloudData.habits || [])];
-            (localData.habits || []).forEach((lh: any) => { if (!mergedHabits.some((ch: any) => ch.id === lh.id)) mergedHabits.push(lh) })
-            
+          const preferLocal = localTime > cloudTime
+
+          if (localData.profile?.onboarded) {
             const merged = {
               ...cloudData,
-              items: mergedItems,
-              journal: mergedJournal.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-              people: mergedPeople,
-              habits: dedupeHabits(mergedHabits),
+              items: unionById(cloudData.items, localData.items, preferLocal),
+              journal: unionById(cloudData.journal, localData.journal, preferLocal).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+              people: unionById(cloudData.people, localData.people, preferLocal),
+              habits: dedupeHabits(unionById(cloudData.habits, localData.habits, preferLocal)),
               chatHistory: [...(cloudData.chatHistory || []), ...(localData.chatHistory || [])].slice(-100),
+              subscription: pickSubscription(localData.subscription, cloudData.subscription),
             }
             setState(prev => ({ ...DEFAULT_STATE, ...merged }))
             await saveUserData(currentUserId, { ...merged, lastSyncedAt: new Date().toISOString() })
@@ -440,13 +487,25 @@ function App() {
       if (document.visibilityState === 'visible') {
         const cloudData = await loadUserData(authUser.id)
         if (cloudData && cloudData.profile?.onboarded) {
-          // Compare timestamps — only update if cloud is newer
+          // Compare timestamps — only update if cloud is newer, and
+          // even then UNION instead of replacing, so work done on
+          // this phone since the last sync is never dropped.
           // Read from localStorage (not state) because state.lastSyncedAt is never updated after init
           const cloudTime = new Date(cloudData.lastSyncedAt || 0).getTime()
           const localStored = localStorage.getItem(STORAGE_KEY)
+          const localData = localStored ? JSON.parse(localStored) : null
           const localTime = localStored ? new Date(JSON.parse(localStored).lastSyncedAt || 0).getTime() : 0
           if (cloudTime > localTime) {
-            setState(prev => ({ ...DEFAULT_STATE, ...cloudData, habits: dedupeHabits(cloudData.habits) }))
+            setState(prev => ({
+              ...DEFAULT_STATE,
+              ...cloudData,
+              habits: dedupeHabits(unionById(cloudData.habits, localData?.habits, false)),
+              items: unionById(cloudData.items, localData?.items, false),
+              journal: unionById(cloudData.journal, localData?.journal, false),
+              people: unionById(cloudData.people, localData?.people, false),
+              chatHistory: [...(cloudData.chatHistory || []), ...(localData?.chatHistory || [])].slice(-100),
+              subscription: pickSubscription(localData?.subscription, cloudData.subscription),
+            }))
           }
         }
       }
@@ -802,7 +861,7 @@ function App() {
     <div className="min-h-[100dvh] bg-[#FAF9F6]">
       <Toaster position="top-center" richColors />
       <OfflineIndicator />
-      <TrialBanner subscription={state.subscription} />
+      <TrialBanner subscription={state.subscription} dismissed={trialBannerDismissed} onDismiss={dismissTrialBanner} />
       <IOSInstallPrompt />
       {/* While Clerk is loading, show a brief splash instead of flashing onboarding */}
       {/* Password recovery flow */}
@@ -819,6 +878,7 @@ function App() {
         <OnboardingFlow onComplete={handleOnboardingComplete} />
       ) : (
         <MainApp
+          trialBannerActive={!!(state.subscription.isTrial && state.subscription.trialEndsAt && new Date() < new Date(state.subscription.trialEndsAt) && !trialBannerDismissed)}
           state={state}
           setState={setState}
           addItem={addItem}
@@ -853,9 +913,7 @@ function App() {
   )
 }
 
-function TrialBanner({ subscription }: { subscription: Subscription }) {
-  const [dismissed, setDismissed] = useState(() => localStorage.getItem('lp-trial-banner-dismissed') === '1')
-  
+function TrialBanner({ subscription, dismissed, onDismiss }: { subscription: Subscription; dismissed: boolean; onDismiss: () => void }) {
   if (!subscription.isTrial || !subscription.trialEndsAt || dismissed) return null
   const now = new Date()
   const end = new Date(subscription.trialEndsAt)
@@ -872,7 +930,7 @@ function TrialBanner({ subscription }: { subscription: Subscription }) {
         <p className="text-sm text-stone-600 leading-relaxed mb-4">
           Every feature is unlocked for you — shared lists, habits, 100 AI messages/day, voice journal, focus timer, the works. No credit card needed. Just explore and enjoy.
         </p>
-        <button onClick={() => { setDismissed(true); localStorage.setItem('lp-trial-banner-dismissed', '1') }}
+        <button onClick={onDismiss}
           className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold text-sm shadow-md hover:from-amber-600 hover:to-orange-600 transition-all">
           Let's go! ✨
         </button>
