@@ -106,7 +106,13 @@ export default async function handler(req, res) {
       };
     }
 
-    const body = { model: 'claude-sonnet-5-5', max_tokens: 4096, messages: deduped };
+    // 8192 = the model's max output. The model spends part of its
+    // output budget on hidden thinking (measured 2026-10-30: 1,856
+    // thinking tokens inside a 4,096-token cap, leaving too little
+    // for the visible reply — meal plans still cut off mid-list).
+    // The cap is a ceiling, not a spend: Anthropic bills actual
+    // tokens used, so a high cap costs nothing on short replies.
+    const body = { model: 'claude-sonnet-5-5', max_tokens: 8192, messages: deduped };
     if (system && String(system).trim()) body.system = String(system).trim();
 
     const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
