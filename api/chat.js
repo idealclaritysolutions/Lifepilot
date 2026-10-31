@@ -106,7 +106,7 @@ export default async function handler(req, res) {
       };
     }
 
-    const body = { model: 'claude-sonnet-5-5', max_tokens: 1200, messages: deduped };
+    const body = { model: 'claude-sonnet-5-5', max_tokens: 4096, messages: deduped };
     if (system && String(system).trim()) body.system = String(system).trim();
 
     const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
