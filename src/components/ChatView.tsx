@@ -683,8 +683,13 @@ export function ChatView(props: Props) {
     }
 
     rec.onerror = (e: any) => {
-      if (e.error === 'no-speech' || e.error === 'aborted') return
+      if (e.error === 'aborted') return // user stopped it — expected, stay quiet
+      if (e.error === 'no-speech') {
+        toast.error('I didn\'t hear anything — try again, speaking clearly.')
+        return
+      }
       console.warn('Chat voice error:', e.error)
+      toast.error(`Microphone error: ${e.error}. Check your microphone permission and try again.`)
     }
 
     rec.onend = () => {
@@ -707,7 +712,10 @@ export function ChatView(props: Props) {
     }
 
     recognitionRef.current = rec
-    try { rec.start() } catch { setIsListening(false) }
+    try { rec.start() } catch {
+      setIsListening(false)
+      toast.error('Could not start the microphone. Check your microphone permission and try again.')
+    }
   }
 
   const toggleVoice = () => {
@@ -730,7 +738,7 @@ export function ChatView(props: Props) {
           if (!cleaned) return
           setInput(cleaned.charAt(0).toUpperCase() + cleaned.slice(1))
         },
-        onError: () => setIsListening(false),
+        onError: (msg) => { setIsListening(false); toast.error(msg) },
         onEnd: () => setIsListening(false),
       }).then((session) => {
         if (!session) { setIsListening(false); return }
