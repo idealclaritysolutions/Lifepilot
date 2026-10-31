@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import type { LifeItem } from '@/App'
+import { isNative } from '@/lib/native'
 
 const hasNotificationSupport = typeof window !== 'undefined' && 'Notification' in window
 const hasSWSupport = typeof navigator !== 'undefined' && 'serviceWorker' in navigator
@@ -21,7 +22,23 @@ export function useNotifications() {
     })
   }, [])
 
+  // On the native app the WebView's Notification API does not work —
+  // permission must go through Capacitor's LocalNotifications. The
+  // old web-only path always failed on native, which is why the
+  // Settings toggle could never turn on even with the OS permission
+  // allowed.
   const requestPermission = useCallback(async (): Promise<boolean> => {
+    if (isNative()) {
+      try {
+        const { LocalNotifications } = await import('@capacitor/local-notifications')
+        const checked = await LocalNotifications.checkPermissions()
+        if (checked.display === 'granted') return true
+        const req = await LocalNotifications.requestPermissions()
+        return req.display === 'granted'
+      } catch {
+        return false
+      }
+    }
     if (!hasNotificationSupport) return false
     try {
       if (Notification.permission === 'granted') return true
@@ -33,6 +50,22 @@ export function useNotifications() {
   }, [])
 
   const sendNotification = useCallback((title: string, body: string, data?: any) => {
+    if (isNative()) {
+      // Fire-and-forget local notification on native (WebView
+      // Notification is a no-op there, so this never delivered).
+      import('@capacitor/local-notifications').then(({ LocalNotifications }) =>
+        LocalNotifications.schedule({
+          notifications: [{
+            id: Math.floor(Math.random() * 2_000_000_000),
+            title,
+            body,
+            schedule: { at: new Date(Date.now() + 1000) },
+            extra: data || {},
+          }],
+        })
+      ).catch(() => {})
+      return true
+    }
     const reg = swRef.current
     if (reg) {
       try {
