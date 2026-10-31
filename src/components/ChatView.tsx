@@ -962,6 +962,19 @@ export function ChatView(props: Props) {
         // We'll just add the real response — the searching message stays as context
       }
       
+      // If the model hit the output cap, its reply — and the actions
+      // inside it — are cut off mid-stream. A cut-off reply must never
+      // be shown as final (it promises board adds that never execute).
+      // Regenerate once, concisely, so the actions actually land.
+      if (response.stopReason === 'max_tokens' || response.stopReason === 'length') {
+        const retry = await generateAIResponse(message, state, state.chatHistory, sharedLists, true)
+        if (retry.message && retry.message !== response.message && retry.stopReason !== 'max_tokens' && retry.stopReason !== 'length') {
+          response = retry
+        } else {
+          response = { ...response, message: response.message + '\n\n(That reply got cut off — say "continue" and I\'ll pick it up where it stopped.)' }
+        }
+      }
+
       // Execute non-search actions
       const otherActions = response.actions.filter(a => a.type !== 'web_search')
       if (otherActions.length > 0) {
