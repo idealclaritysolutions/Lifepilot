@@ -531,17 +531,20 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
       nativeSessionRef.current = null
       stoppedByUserRef.current = true
       if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current)
-      session.stop().catch(() => {})
       setIsListening(false)
-      const rawText = nativeTextRef.current || content.trim()
-      setContent(rawText)
-      if (rawText.trim().length > 20) {
-        setIsCleaningTranscript(true)
-        cleanTranscriptWithAI(rawText).then(cleaned => {
-          setContent(cleaned)
-          setIsCleaningTranscript(false)
-        })
-      }
+      // Wait for the session to settle (final transcript or error)
+      // BEFORE reading text — otherwise the polish runs on stale text.
+      session.stop().catch(() => {}).finally(() => {
+        const rawText = nativeTextRef.current || content.trim()
+        setContent(rawText)
+        if (rawText.trim().length > 20) {
+          setIsCleaningTranscript(true)
+          cleanTranscriptWithAI(rawText).then(cleaned => {
+            setContent(cleaned)
+            setIsCleaningTranscript(false)
+          })
+        }
+      })
       return
     }
     stoppedByUserRef.current = true
