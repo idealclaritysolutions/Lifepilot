@@ -55,7 +55,8 @@ export interface DictationHandlers {
 }
 
 export interface DictationSession {
-  stop: () => Promise<void>
+  /** Stops listening. Resolves with the final transcript (or null) once it has arrived. */
+  stop: () => Promise<string | null>
 }
 
 /**
@@ -83,28 +84,52 @@ export async function startDictation(
         handlers.onError?.('Microphone permission was not granted. Allow microphone access in Settings > Apps > Life Pilot AI > Permissions, then try again.')
         return null
       }
-      let stopped = false
-      const partialHandle = await SpeechRecognition.addListener('partialResults', (data) => {
-        const text = data.matches?.[0]
-        if (text) handlers.onTranscript(text, false)
-      })
-      const endListener = (SpeechRecognition as unknown as {
-        addListener: (e: string, cb: () => void) => Promise<{ remove: () => Promise<void> }>
-      }).addListener('listeningState', () => { /* state changes handled via stop() */ })
-      void endListener
-      await SpeechRecognition.start({
+      // FINAL-ONLY mode (partialResults: false) — deliberate, and the
+      // fix for the build-6 "blinks forever, nothing captured" glitch.
+      // In partial mode this plugin resolves start() the moment
+      // listening begins, and then every recognizer error (no match,
+      // timeout, network, busy) rejects an already-settled call — a
+      // no-op — so JS hears nothing: no transcript, no error, and the
+      // UI blinks forever. In final mode the start() promise settles
+      // exactly once: matches on success, rejection on error.
+      // Cost: no live interim text on native (text lands when the
+      // utterance finalizes). Single-utterance dictation, which is
+      // what the journal/chat flows already assume.
+      let settled = false
+      let lastTranscript: string | null = null
+      let releaseSettled: (() => void) | null = null
+      const settledPromise = new Promise<void>((res) => { releaseSettled = res })
+      const markSettled = () => { if (!settled) { settled = true; releaseSettled?.() } }
+      SpeechRecognition.start({
         language,
         maxResults: 1,
-        partialResults: true,
+        partialResults: false,
         popup: false,
+      }).then((result) => {
+        const text = (result as { matches?: string[] } | undefined)?.matches?.[0]
+        if (text) {
+          lastTranscript = text
+          handlers.onTranscript(text, true)
+        }
+        markSettled()
+        handlers.onEnd?.()
+      }).catch((err) => {
+        const msg = err instanceof Error ? err.message : (typeof err === 'string' ? err : '')
+        handlers.onError?.(msg || 'Speech recognition failed. Try again.')
+        markSettled()
+        handlers.onEnd?.()
       })
       return {
         stop: async () => {
-          if (stopped) return
-          stopped = true
-          try { await SpeechRecognition.stop() } catch { /* already stopped */ }
-          try { await partialHandle.remove() } catch { /* noop */ }
-          handlers.onEnd?.()
+          if (settled) return lastTranscript
+          // NOTE: the plugin's stop() never resolves its own call, so
+          // never await it unbounded — fire it and wait for the start
+          // promise to settle (stopListening() delivers onResults /
+          // onError, which settles it), bounded by a timeout.
+          try { SpeechRecognition.stop().catch(() => {}) } catch { /* ignore */ }
+          await Promise.race([settledPromise, new Promise((r) => setTimeout(r, 3000))])
+          if (!settled) { markSettled(); handlers.onEnd?.() }
+          return lastTranscript
         },
       }
     } catch (err) {
@@ -138,9 +163,7 @@ export async function startDictation(
   recognition.onend = () => handlers.onEnd?.()
   recognition.start()
   return {
-    stop: async () => {
-      try { recognition.stop() } catch { /* already stopped */ }
-    },
+    stop: async () => null,
   }
 }
 
