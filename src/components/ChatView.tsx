@@ -726,9 +726,14 @@ export function ChatView(props: Props) {
         const session = nativeSessionRef.current
         nativeSessionRef.current = null
         setIsListening(false)
-        session?.stop().catch(() => {})
-        const currentText = input.trim()
-        if (currentText) setTimeout(() => handleSend(currentText), 300)
+        // Send AFTER the session settles: stop() resolves with the
+        // final transcript, and reading input synchronously here
+        // races it (the transcript lands via onTranscript as part
+        // of stopping).
+        session?.stop().catch(() => null).then((transcript) => {
+          const currentText = (transcript || '').trim() || input.trim()
+          if (currentText) setTimeout(() => handleSend(currentText), 100)
+        })
         return
       }
       setIsListening(true)
@@ -772,12 +777,14 @@ export function ChatView(props: Props) {
   }
 
   const handleSend = async (text?: string) => {
-    // Stop voice FIRST before reading input
+    // Stop voice FIRST before reading input — and wait for the final
+    // transcript, so a send tapped mid-dictation doesn't lose it.
+    let stoppedTranscript: string | null = null
     if (isListening) {
       chatStoppedByUserRef.current = true
       if (chatRestartTimeoutRef.current) clearTimeout(chatRestartTimeoutRef.current)
       try { recognitionRef.current?.abort() } catch {}
-      nativeSessionRef.current?.stop().catch(() => {})
+      stoppedTranscript = await nativeSessionRef.current?.stop().catch(() => null) ?? null
       nativeSessionRef.current = null
       setIsListening(false)
       chatFinalSegmentsRef.current = []
@@ -785,7 +792,7 @@ export function ChatView(props: Props) {
       chatProcessedIdxRef.current = 0
     }
     
-    const message = text || input.trim()
+    const message = text || stoppedTranscript?.trim() || input.trim()
     if (!message || isTyping) return
 
     // Clear input immediately
