@@ -15,6 +15,7 @@ export interface AIAction {
 export interface AIResponse {
   message: string
   actions: AIAction[]
+  stopReason?: string
 }
 
 // ─── CATEGORY DETECTION ────────────────────────────────────────────
@@ -232,6 +233,7 @@ ASK FIRST when you don't know their preferences:
 - Health: "What does your current routine look like?"
 - Vague requests: "Tell me more about what you need"
 Use actions: [] when asking questions.
+Only say something is added, saved, or on the board when you emit the matching action in the same reply — never promise an add without its action.
 
 CALENDAR/MEETING FLOW:
 When a user wants to schedule a meeting or event, gather ALL details before creating the calendar link:
@@ -618,7 +620,8 @@ export async function generateAIResponse(
   userMessage: string,
   state: AppState,
   chatHistory: { role: 'user' | 'assistant'; content: string }[],
-  sharedLists?: { id: string; name: string }[]
+  sharedLists?: { id: string; name: string }[],
+  concise?: boolean
 ): Promise<AIResponse> {
   const history = chatHistory.slice(-16).map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
   const lastMsg = history[history.length - 1]
@@ -641,15 +644,17 @@ export async function generateAIResponse(
   const appToken = Math.abs(hash).toString(36)
 
   try {
+    const sys = buildSystemPrompt(state, sharedLists) + (concise ? '\n\nKeep your reply concise: under 250 words, but still emit every action the user asked for.' : '')
     const res = await fetch(`${apiBase()}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-App-Token': appToken },
-      body: JSON.stringify({ system: buildSystemPrompt(state, sharedLists), messages }),
+      body: JSON.stringify({ system: sys, messages }),
     })
     if (!res.ok) throw new Error(`API ${res.status}`)
     const data = await res.json()
     const rawText = data.content?.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n') || ''
-    return parseAIResponse(rawText, userMessage, state)
+    const parsed = parseAIResponse(rawText, userMessage, state)
+    return { ...parsed, stopReason: data.stop_reason }
   } catch (err) {
     console.error('Chat error:', err)
     return getFallbackResponse(userMessage, state)
