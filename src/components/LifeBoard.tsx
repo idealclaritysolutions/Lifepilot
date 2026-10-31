@@ -92,8 +92,9 @@ function useGoogleCalendarEvents() {
   return events
 }
 
-// ─── One task row. Checkbox completes; tap the row for a single
-// detail strip (edit text, date, goal, delete). No per-row icons. ───
+// ─── One task row. Checkbox completes; tap the row for a detail
+// preview first (full text, category, date, time, goal, priority);
+// Edit is a button inside the preview, never the default. ───
 function TaskRow({ item, goals, updateItem, removeItem }: {
   item: LifeItem
   goals: Goal[]
@@ -101,6 +102,7 @@ function TaskRow({ item, goals, updateItem, removeItem }: {
   removeItem: (id: string) => void
 }) {
   const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(item.text)
   const [editDate, setEditDate] = useState(item.dueDate || '')
   const [editGoalId, setEditGoalId] = useState(item.goalId || '')
@@ -119,7 +121,7 @@ function TaskRow({ item, goals, updateItem, removeItem }: {
       <div className="flex items-center gap-3">
         <button onClick={() => updateItem(item.id, { status: 'done', completedAt: new Date().toISOString() })}
           className={`w-5 h-5 rounded-full flex-none border-2 ${isOverdue ? 'border-red-300' : 'border-stone-300'} hover:border-emerald-400 transition-colors`} aria-label="Mark done" />
-        <button onClick={() => { setOpen(!open); setEditText(item.text); setEditDate(item.dueDate || ''); setEditGoalId(item.goalId || '') }}
+        <button onClick={() => { if (open) setEditing(false); setOpen(!open) }}
           className="flex-1 min-w-0 text-left">
           <span className="flex items-center gap-2">
             <span className={`w-1.5 h-1.5 rounded-full flex-none ${CAT_DOT[item.category] || CAT_DOT.general}`} />
@@ -129,17 +131,43 @@ function TaskRow({ item, goals, updateItem, removeItem }: {
             {isOverdue && <span className="text-[11px] text-red-500 font-medium">Overdue</span>}
             {item.dueDate && !isOverdue && item.dueDate !== todayStr && <span className="text-[12px] text-stone-500">{fmtShort(item.dueDate)}</span>}
             {item.dueTime && <span className="text-[12px] text-stone-500">{item.dueTime}</span>}
+            {item.category !== 'general' && <span className="text-[12px] text-stone-500 capitalize">{item.category}</span>}
             {linkedGoal && <span className="text-[12px] text-stone-500 truncate">🎯 {linkedGoal.title}</span>}
+            {item.eisenhower === 'do' && <span className="text-[12px] text-amber-600 font-medium">★ Do first</span>}
           </span>
         </button>
         {open ? <ChevronUp className="w-4 h-4 text-stone-400 flex-none" /> : <ChevronDown className="w-4 h-4 text-stone-400 flex-none" />}
       </div>
 
-      {open && (
+      {/* Detail preview first — tap a task to SEE it; Edit is a choice, not the default. */}
+      {open && !editing && (
+        <div className="mt-3 pt-3 border-t border-stone-100 space-y-2">
+          <p className="text-[15px] font-medium text-stone-900 leading-snug">{item.text}</p>
+          <div className="space-y-1.5">
+            <div className="flex gap-2 text-[13px]"><span className="w-16 flex-none text-stone-500">Category</span><span className="text-stone-800 capitalize">{item.category}</span></div>
+            <div className="flex gap-2 text-[13px]"><span className="w-16 flex-none text-stone-500">Date</span><span className="text-stone-800">{item.dueDate ? (item.dueDate === todayStr ? 'Today' : fmtShort(item.dueDate)) : 'No date'}</span></div>
+            {item.dueTime && (
+              <div className="flex gap-2 text-[13px]"><span className="w-16 flex-none text-stone-500">Time</span><span className="text-stone-800">{item.dueTime}</span></div>
+            )}
+            <div className="flex gap-2 text-[13px]"><span className="w-16 flex-none text-stone-500">Goal</span><span className="text-stone-800">{linkedGoal ? `🎯 ${linkedGoal.title}` : 'No goal'}</span></div>
+            {item.eisenhower && (
+              <div className="flex gap-2 text-[13px]"><span className="w-16 flex-none text-stone-500">Priority</span><span className="text-stone-800">{item.eisenhower === 'do' ? 'Do first' : item.eisenhower === 'schedule' ? 'Schedule' : item.eisenhower === 'delegate' ? 'Delegate' : 'Eliminate'}</span></div>
+            )}
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button onClick={() => { setEditText(item.text); setEditDate(item.dueDate || ''); setEditGoalId(item.goalId || ''); setEditing(true) }}
+              className="flex-1 py-2 rounded-xl bg-stone-800 text-white text-xs font-medium">Edit</button>
+            <button onClick={() => removeItem(item.id)} className="px-3 py-2 rounded-xl bg-white text-red-500 text-xs font-medium border border-red-200">Delete</button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit form — only after tapping Edit in the preview. */}
+      {open && editing && (
         <div className="mt-3 pt-3 border-t border-stone-100 space-y-2.5">
           <input value={editText} onChange={e => setEditText(e.target.value)} autoFocus
             className="w-full text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-300"
-            onKeyDown={e => { if (e.key === 'Enter') { saveText(); setOpen(false) } if (e.key === 'Escape') setOpen(false) }}
+            onKeyDown={e => { if (e.key === 'Enter') { saveText(); setEditing(false) } if (e.key === 'Escape') setEditing(false) }}
             onBlur={saveText} />
           <div className="flex gap-2">
             <input type="date" value={editDate} onChange={e => { setEditDate(e.target.value); updateItem(item.id, { dueDate: e.target.value || undefined }) }}
@@ -152,7 +180,10 @@ function TaskRow({ item, goals, updateItem, removeItem }: {
               </select>
             )}
           </div>
-          <div className="flex justify-end">
+          <div className="flex justify-between">
+            <button onClick={() => setEditing(false)} className="flex items-center gap-1 text-[12px] text-stone-500 hover:text-stone-800 px-2 py-1">
+              ← Back to details
+            </button>
             <button onClick={() => removeItem(item.id)} className="flex items-center gap-1 text-[12px] text-stone-500 hover:text-red-500 px-2 py-1">
               <Trash2 className="w-3 h-3" /> Delete task
             </button>
