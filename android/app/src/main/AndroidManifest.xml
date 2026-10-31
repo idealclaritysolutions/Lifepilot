@@ -38,4 +38,11 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- @capacitor/geolocation v8 declares NO location permissions in its
+         own manifest, so without these the plugin's requestPermissions()
+         auto-denies and the Settings location toggle can never turn on
+         (nor can the user allow it by hand — the permission wouldn't
+         exist for the app). -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 </manifest>
