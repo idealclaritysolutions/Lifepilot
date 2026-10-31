@@ -75,12 +75,12 @@ export async function startDictation(
       const { SpeechRecognition } = await import('@capacitor-community/speech-recognition')
       const avail = await SpeechRecognition.available()
       if (!avail.available) {
-        handlers.onError?.('Speech recognition is not available on this device.')
+        handlers.onError?.('Speech recognition is not available on this device. Make sure the Google app is installed and up to date, then try again.')
         return null
       }
       const perm = await SpeechRecognition.requestPermissions()
       if ((perm as { speechRecognition?: string }).speechRecognition !== 'granted') {
-        handlers.onError?.('Microphone / speech permission was not granted.')
+        handlers.onError?.('Microphone permission was not granted. Allow microphone access in Settings > Apps > Life Pilot AI > Permissions, then try again.')
         return null
       }
       let stopped = false
