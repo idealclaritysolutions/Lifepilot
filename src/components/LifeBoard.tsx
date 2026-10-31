@@ -363,6 +363,7 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
   const [showAddTask, setShowAddTask] = useState(false)
   const [newText, setNewText] = useState('')
   const [newDate, setNewDate] = useState(todayStr)
+  const [newGoalId, setNewGoalId] = useState('')
   const [showAddHabit, setShowAddHabit] = useState(false)
   const [newHabitName, setNewHabitName] = useState('')
   const [newHabitEmoji, setNewHabitEmoji] = useState('✨')
@@ -421,8 +422,8 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
 
   const submitTask = () => {
     if (!newText.trim()) return
-    addItem({ id: `item-${Date.now()}`, text: newText.trim(), category: 'general', status: 'pending', createdAt: new Date().toISOString(), snoozeCount: 0, dueDate: newDate || undefined } as any)
-    setNewText(''); setNewDate(todayStr); setShowAddTask(false)
+    addItem({ id: `item-${Date.now()}`, text: newText.trim(), category: 'general', status: 'pending', createdAt: new Date().toISOString(), snoozeCount: 0, dueDate: newDate || undefined, goalId: newGoalId || undefined } as any)
+    setNewText(''); setNewDate(todayStr); setNewGoalId(''); setShowAddTask(false)
   }
   const submitHabit = () => {
     if (!newHabitName.trim()) return
@@ -476,11 +477,18 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
             <input value={newText} onChange={e => setNewText(e.target.value)} placeholder="What needs to be done?"
               className="w-full text-sm border border-stone-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-amber-300" autoFocus
               onKeyDown={e => { if (e.key === 'Enter') submitTask() }} />
+            {activeGoals.length > 0 && (
+              <select value={newGoalId} onChange={e => setNewGoalId(e.target.value)}
+                className="w-full text-xs border border-stone-200 rounded-xl px-2.5 py-2 bg-white">
+                <option value="">No goal — just a task</option>
+                {activeGoals.map(g => <option key={g.id} value={g.id}>🎯 {g.title}</option>)}
+              </select>
+            )}
             <div className="flex gap-2">
               <input type="date" value={newDate} onChange={e => setNewDate(e.target.value)}
                 className="flex-1 text-xs border border-stone-200 rounded-xl px-2.5 py-2 bg-white" />
               <button onClick={submitTask} className="flex-1 py-2 rounded-xl bg-stone-800 text-white text-sm font-medium">Add</button>
-              <button onClick={() => { setShowAddTask(false); setNewText('') }} className="px-4 py-2 rounded-xl bg-stone-100 text-stone-500 text-sm">Cancel</button>
+              <button onClick={() => { setShowAddTask(false); setNewText(''); setNewGoalId('') }} className="px-4 py-2 rounded-xl bg-stone-100 text-stone-500 text-sm">Cancel</button>
             </div>
           </div>
         )}
