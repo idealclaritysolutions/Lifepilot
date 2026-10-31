@@ -453,7 +453,11 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
     }
 
     rec.onerror = (e: any) => {
-      if (e.error === 'no-speech' || e.error === 'aborted') return
+      if (e.error === 'aborted') return // user stopped it — expected, stay quiet
+      if (e.error === 'no-speech') {
+        setVoiceError('I didn\'t hear anything — try again, speaking clearly into the microphone.')
+        return
+      }
       console.warn('Voice error:', e.error)
       setVoiceError(`Microphone error: ${e.error}. Check your microphone permission and try again.`)
     }
@@ -479,7 +483,10 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
     }
 
     recognitionRef.current = rec
-    try { rec.start() } catch { setIsListening(false) }
+    try { rec.start() } catch {
+      setIsListening(false)
+      setVoiceError('Could not start the microphone. Check your microphone permission and try again.')
+    }
   }
 
   const startVoice = () => {
