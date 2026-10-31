@@ -6,6 +6,7 @@ import { ArrowLeft, Trash2, User, Heart, Shield, Lock, Bell, MapPin, Calendar, L
 import { toast } from 'sonner'
 import { LegalPage } from '@/components/LegalPages'
 import { AccountSection, useAuth } from '@/components/AuthGate'
+import { isNative } from '@/lib/native'
 
 const IS_STORE_BUILD = import.meta.env.VITE_STORE_BUILD === 'true'
 const ENERGY_DRAINERS = [
@@ -157,7 +158,12 @@ export function Settings({ state, notifications, locationHook, updateProfile, se
         console.warn('[Push] Web Push subscription failed:', err)
       }
     } else {
-      toast.error('Notifications blocked. Check your browser settings.')
+      // Once denied, the browser never re-prompts — the user has to
+      // unblock it by hand, so say exactly where instead of a
+      // generic "check your settings".
+      toast.error(isNative()
+        ? 'Notifications are off for Life Pilot AI. Allow them in Settings > Apps > Life Pilot AI > Notifications, then try again.'
+        : 'Notifications are blocked for this site. Tap the lock/tune icon in the address bar → Site settings → Notifications → Allow, then try again.')
     }
     setEnablingNotif(false)
   }
@@ -179,7 +185,16 @@ export function Settings({ state, notifications, locationHook, updateProfile, se
       const place = loc.city ? `${loc.city}, ${loc.state}` : 'your area'
       toast.success(`Location set to ${place}. I can now find places near you!`)
     } else {
-      toast.error('Couldn\'t get location. Check your browser permissions.')
+      const err = locationHook.error as string | null
+      if (isNative()) {
+        toast.error(err === 'permission-denied'
+          ? 'Location permission is off. Allow it in Settings > Apps > Life Pilot AI > Permissions > Location, then try again.'
+          : 'Couldn\'t get your location. Make sure device location is on, then try again.')
+      } else {
+        toast.error(err === 'permission-denied'
+          ? 'Location is blocked for this site. Tap the lock/tune icon in the address bar → Site settings → Location → Allow, then try again.'
+          : 'Couldn\'t get your location. Check that device location is on and try again.')
+      }
     }
     setEnablingLoc(false)
   }
