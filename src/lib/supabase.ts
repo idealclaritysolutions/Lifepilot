@@ -185,6 +185,13 @@ export async function updateSharedItemText(id: string, text: string, link?: stri
   } catch { return false }
 }
 
+export async function updateSharedItemCategory(id: string, category: string): Promise<boolean> {
+  try {
+    const { error } = await supabase.from('shared_items').update({ category }).eq('id', id)
+    return !error
+  } catch { return false }
+}
+
 export async function removeSharedItem(id: string): Promise<boolean> {
   try {
     const { error } = await supabase.from('shared_items').delete().eq('id', id)
