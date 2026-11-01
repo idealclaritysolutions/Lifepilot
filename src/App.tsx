@@ -488,7 +488,16 @@ function App() {
         } else {
           const localData = loadState()
           if (localData.profile?.onboarded) {
-            await saveUserData(currentUserId, { ...localData, chatHistory: (localData.chatHistory || []).slice(-100) })
+            // Brand-new account, first sign-in: trials follow the
+            // account. If the device state has no active premium
+            // subscription, grant this account its one 7-day trial
+            // (same rule as the different-user adoption path).
+            const sub = (localData as any).subscription || {}
+            const now = Date.now()
+            const hasActivePremium = sub.tier === 'enterprise' || (sub.tier === 'premium' && (!sub.isTrial || (sub.trialEndsAt && new Date(sub.trialEndsAt).getTime() > now)))
+            const toSave: any = hasActivePremium ? localData : { ...localData, subscription: { tier: 'premium', isTrial: true, trialEndsAt: new Date(now + 7 * 86400000).toISOString() } }
+            setState(prev => ({ ...DEFAULT_STATE, ...toSave }))
+            await saveUserData(currentUserId, { ...toSave, chatHistory: (toSave.chatHistory || []).slice(-100) })
           } else {
             const name = userName || 'Friend'
             setState(prev => ({ ...prev, profile: { ...prev.profile, name, onboarded: true } }))
