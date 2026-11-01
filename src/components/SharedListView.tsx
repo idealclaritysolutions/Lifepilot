@@ -461,7 +461,7 @@ export function SharedListView({ onClose, state, isTab }: Props) {
                       <div key={item.id} className="py-3">
                         <div className="flex items-start gap-3">
                           <button onClick={() => handleToggle(item.id!, item.checked)}
-                            className="w-7 h-7 rounded-full border-2 border-stone-300 flex-none hover:border-emerald-400 mt-0.5" />
+                            className="icon-btn w-7 h-7 rounded-full border-2 border-stone-300 flex-none hover:border-emerald-400 mt-0.5" />
                           <div className="flex-1 min-w-0">
                             {editingItem === item.id ? (
                               <div className="flex gap-2">
@@ -579,7 +579,7 @@ export function SharedListView({ onClose, state, isTab }: Props) {
                     {checked.map(item => (
                       <div key={item.id} className="flex items-center gap-3 py-2.5 opacity-60">
                         <button onClick={() => handleToggle(item.id!, item.checked)}
-                          className="w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center flex-none">
+                          className="icon-btn w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center flex-none">
                           <Check className="w-4 h-4 text-white" />
                         </button>
                         <span className="flex-1 text-sm text-stone-500 line-through">
