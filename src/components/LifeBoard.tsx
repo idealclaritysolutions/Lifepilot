@@ -120,7 +120,7 @@ function TaskRow({ item, goals, updateItem, removeItem }: {
     <div className="py-3">
       <div className="flex items-center gap-3">
         <button onClick={() => updateItem(item.id, { status: 'done', completedAt: new Date().toISOString() })}
-          className={`w-5 h-5 rounded-full flex-none border-2 ${isOverdue ? 'border-red-300' : 'border-stone-300'} hover:border-emerald-400 transition-colors`} aria-label="Mark done" />
+          className={`icon-btn w-5 h-5 rounded-full flex-none border-2 ${isOverdue ? 'border-red-300' : 'border-stone-300'} hover:border-emerald-400 transition-colors`} aria-label="Mark done" />
         <button onClick={() => { if (open) setEditing(false); setOpen(!open) }}
           className="flex-1 min-w-0 text-left">
           <span className="flex items-center gap-2">
@@ -231,7 +231,7 @@ function HabitRow({ habit, goals, toggleHabitDay, updateHabit, removeHabit, toda
     <div className="py-3">
       <div className="flex items-center gap-3">
         <button onClick={() => toggleHabitDay?.(habit.id, todayStr)}
-          className={`w-6 h-6 rounded-full flex items-center justify-center flex-none transition-all ${doneToday ? 'bg-emerald-500 text-white' : 'border-2 border-stone-200 hover:border-emerald-400'}`}>
+          className={`icon-btn w-6 h-6 rounded-full flex items-center justify-center flex-none transition-all ${doneToday ? 'bg-emerald-500 text-white' : 'border-2 border-stone-200 hover:border-emerald-400'}`}>
           {doneToday && <Check className="w-3.5 h-3.5" />}
         </button>
         <button onClick={() => setShowCal(!showCal)} className="flex-1 min-w-0 text-left flex items-center gap-2">
@@ -340,7 +340,7 @@ function GoalCard({ goal, items, habits, toggleHabitDay, updateItem, updateGoal,
           {goalTasks.map(t => (
             <div key={t.id} className="flex items-center gap-2.5">
               <button onClick={() => updateItem(t.id, t.status === 'done' ? { status: 'pending', completedAt: undefined } : { status: 'done', completedAt: new Date().toISOString() })}
-                className={`w-[18px] h-[18px] rounded-full flex items-center justify-center flex-none ${t.status === 'done' ? 'bg-emerald-500 text-white' : 'border-2 border-stone-300'}`}>
+                className={`icon-btn w-[18px] h-[18px] rounded-full flex items-center justify-center flex-none ${t.status === 'done' ? 'bg-emerald-500 text-white' : 'border-2 border-stone-300'}`}>
                 {t.status === 'done' && <Check className="w-2.5 h-2.5" />}
               </button>
               <span className={`text-[14px] flex-1 ${t.status === 'done' ? 'text-stone-400 line-through' : 'text-stone-700'}`}>{t.text}</span>
@@ -350,7 +350,7 @@ function GoalCard({ goal, items, habits, toggleHabitDay, updateItem, updateGoal,
             const dn = h.completions.includes(todayStr)
             return (
               <div key={h.id} className="flex items-center gap-2.5">
-                <button onClick={() => toggleHabitDay?.(h.id, todayStr)} className={`w-[18px] h-[18px] rounded-full flex items-center justify-center flex-none ${dn ? 'bg-emerald-500 text-white' : 'border-2 border-stone-300'}`}>{dn && <Check className="w-2.5 h-2.5" />}</button>
+                <button onClick={() => toggleHabitDay?.(h.id, todayStr)} className={`icon-btn w-[18px] h-[18px] rounded-full flex items-center justify-center flex-none ${dn ? 'bg-emerald-500 text-white' : 'border-2 border-stone-300'}`}>{dn && <Check className="w-2.5 h-2.5" />}</button>
                 <span className="text-base">{h.emoji}</span>
                 <span className={`text-[14px] flex-1 ${dn ? 'text-stone-400' : 'text-stone-700'}`}>{h.name}</span>
               </div>
@@ -688,7 +688,7 @@ export function LifeBoard({ state, addItem, updateItem, removeItem, addGoal, upd
         <div className="divide-y divide-stone-100">
           {done.slice(0, 20).map(item => (
             <div key={item.id} className="flex items-center gap-2.5 py-2.5">
-              <button onClick={() => updateItem(item.id, { status: 'pending', completedAt: undefined })} className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center flex-none"><Check className="w-3 h-3" /></button>
+              <button onClick={() => updateItem(item.id, { status: 'pending', completedAt: undefined })} className="icon-btn w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center flex-none"><Check className="w-3 h-3" /></button>
               <span className="text-[14px] text-stone-500 line-through flex-1 truncate">{item.text}</span>
             </div>
           ))}
