@@ -69,7 +69,62 @@ export function ChatView(props: Props) {
     const log: string[] = []
     let newlyCreatedListId: string | null = null // Track if a new shared list was created in this batch
 
-    for (const action of actions) {
+    // ── Grocery bulk routing (Oct 31 fix) ──
+    // 5+ grocery items in one reply = a shopping list, not board spam.
+    // They become ONE board task (+ shared-list items when the user
+    // has lists), instead of one task per ingredient.
+    const isGroceryPayload = (p: any) => {
+      if (!p?.text) return false
+      if (p.category === 'grocery') return true
+      if (!p.category) { try { return detectCategory(p.text) === 'grocery' } catch { return false } }
+      return false
+    }
+    const groceryItems: { text: string }[] = []
+    let groceryCount = 0
+    for (const a of actions) {
+      if (a.type === 'add_item' && isGroceryPayload(a.payload)) groceryCount++
+      if (a.type === 'add_multiple_items') for (const p of (a.payload?.items || [])) if (isGroceryPayload(p)) groceryCount++
+    }
+    let actionsToRun = actions
+    if (groceryCount >= 5) {
+      const remaining: AIAction[] = []
+      for (const a of actions) {
+        if (a.type === 'add_item' && isGroceryPayload(a.payload)) { groceryItems.push({ text: a.payload.text }); continue }
+        if (a.type === 'add_multiple_items') {
+          const items = a.payload?.items || []
+          const g = items.filter(isGroceryPayload)
+          const rest = items.filter((p: any) => !isGroceryPayload(p))
+          groceryItems.push(...g.map((p: any) => ({ text: p.text })))
+          if (rest.length > 0) remaining.push({ ...a, payload: { ...a.payload, items: rest } })
+          continue
+        }
+        remaining.push(a)
+      }
+      actionsToRun = remaining
+      const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0]
+      const hasListsAccess = state.subscription?.tier === 'premium' || state.subscription?.tier === 'enterprise'
+      const lists = sharedListsRef.current || []
+      let appendedTo: string | null = null
+      if (hasListsAccess && userId && lists.length > 0) {
+        const target = lists.find((h: any) => /grocer|shop/i.test(h.name || '')) || lists[0]
+        for (const g of groceryItems) {
+          await addSharedItem({ household_id: target.id, text: g.text, category: 'grocery', checked: false, added_by: userId })
+        }
+        appendedTo = target.name
+      }
+      addItem({
+        id: uid(),
+        text: appendedTo ? `Buy groceries for the week — see '${appendedTo}' in Lists` : 'Buy groceries for the week',
+        category: 'grocery',
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        dueDate: tomorrow,
+        snoozeCount: 0,
+      } as any)
+      log.push(`✅ Created one shopping task (${groceryItems.length} ingredients${appendedTo ? ` → ${appendedTo}` : ''})`)
+    }
+
+    for (const action of actionsToRun) {
       switch (action.type) {
         case 'add_item': {
           const p = action.payload
@@ -1196,7 +1251,7 @@ export function ChatView(props: Props) {
 
         <div className="flex items-end gap-2 bg-white rounded-2xl border border-stone-200 p-1.5 focus-within:border-amber-300 transition-colors shadow-sm">
           <button onClick={toggleVoice} disabled={isTyping || analyzing}
-            className={`h-9 w-9 rounded-xl flex items-center justify-center flex-none transition-all ${
+            className={`icon-btn h-9 w-9 rounded-xl flex items-center justify-center flex-none transition-all ${
               isListening ? 'bg-red-500 text-white animate-pulse' : 'hover:bg-stone-100 text-stone-600 hover:text-stone-600'
             } disabled:opacity-20`}>
             {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
@@ -1208,7 +1263,7 @@ export function ChatView(props: Props) {
               }
               fileInputRef.current?.click()
             }} disabled={isTyping || analyzing}
-            className="h-9 w-9 rounded-xl flex items-center justify-center flex-none hover:bg-stone-100 text-stone-600 hover:text-stone-600 transition-all disabled:opacity-20 relative">
+            className="icon-btn h-9 w-9 rounded-xl flex items-center justify-center flex-none hover:bg-stone-100 text-stone-600 hover:text-stone-600 transition-all disabled:opacity-20 relative">
             <Paperclip className="w-4 h-4" />
             {!hasFeature(state.subscription.tier, 'document_scanning') && <Lock className="w-2.5 h-2.5 absolute -top-0.5 -right-0.5 text-amber-500" />}
           </button>
@@ -1217,7 +1272,7 @@ export function ChatView(props: Props) {
             className="flex-1 border-0 focus-visible:ring-0 resize-none text-[15px] min-h-[40px] max-h-[120px] p-2 bg-transparent placeholder:text-stone-600"
             rows={1} disabled={isTyping || analyzing} />
           <Button onClick={() => handleSend()} disabled={!input.trim() || isTyping} size="sm"
-            className="rounded-xl bg-stone-800 hover:bg-stone-700 text-white h-9 w-9 p-0 flex-none disabled:opacity-20">
+            className="icon-btn rounded-xl bg-stone-800 hover:bg-stone-700 text-white h-9 w-9 p-0 flex-none disabled:opacity-20">
             <Send className="w-4 h-4" />
           </Button>
         </div>
