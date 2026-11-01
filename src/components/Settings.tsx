@@ -46,7 +46,7 @@ export function Settings({ state, notifications, locationHook, updateProfile, se
   const [customDrainer, setCustomDrainer] = useState('')
   const [googleEmail, setGoogleEmail] = useState<string | null>(null)
   const auth = useAuth()
-  const user = auth
+  const user = auth.user // Supabase user (the auth object itself has no .id — using it directly is why Connect never fired)
 
   // Check Google connection status
   useEffect(() => {
