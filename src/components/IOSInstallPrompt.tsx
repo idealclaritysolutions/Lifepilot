@@ -48,7 +48,7 @@ export function IOSInstallPrompt() {
                 <p className="text-[11px] text-stone-500">Get notifications, voice shortcuts & more</p>
               </div>
             </div>
-            <button onClick={dismiss} className="w-8 h-8 rounded-full bg-white/80 flex items-center justify-center">
+            <button onClick={dismiss} className="icon-btn w-8 h-8 rounded-full bg-white/80 flex items-center justify-center">
               <X className="w-4 h-4 text-stone-400" />
             </button>
           </div>
