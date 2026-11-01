@@ -64,9 +64,10 @@
   animation: fade-in-up 0.4s ease-out;
 }
 
-/* Touch-friendly targets */
+/* Touch-friendly targets — small round/square icon buttons opt out
+   with .icon-btn, or a 44px min-height stretches them into pills */
 @media (hover: none) {
-  button, a, [role="button"] {
+  button:not(.icon-btn), a:not(.icon-btn), [role="button"]:not(.icon-btn) {
     min-height: 44px;
   }
 }
