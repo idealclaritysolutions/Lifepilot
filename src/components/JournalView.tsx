@@ -464,19 +464,15 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
 
     rec.onend = () => {
       if (!stoppedByUserRef.current) {
-        const isAndroid = /android/i.test(navigator.userAgent)
-        if (isAndroid) {
-          // Android: stop cleanly. Text preserved. User taps mic to continue.
-          setIsListening(false)
-          setContent(buildDisplayText())
-        } else {
-          // iOS: restart seamlessly
-          processedIdxRef.current = 0
-          restartTimeoutRef.current = setTimeout(() => {
-            if (!stoppedByUserRef.current) launchRecognition()
-            else setIsListening(false)
-          }, 500)
-        }
+        // Restart seamlessly on all platforms. Android Chrome kills
+        // continuous recognition after ~5s, which used to force the
+        // user to tap the mic again; the dedup guards above prevent
+        // replayed segments from duplicating text.
+        processedIdxRef.current = 0
+        restartTimeoutRef.current = setTimeout(() => {
+          if (!stoppedByUserRef.current) launchRecognition()
+          else setIsListening(false)
+        }, 500)
       } else {
         setIsListening(false)
       }
