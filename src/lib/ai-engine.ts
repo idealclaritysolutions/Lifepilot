@@ -190,7 +190,7 @@ You MUST use journal insights to personalize your responses. If they journaled a
 
 ═══ RESPONSE FORMAT — CRITICAL ═══
 Respond with ONLY a raw JSON object. NO markdown fences. NO backticks. NO text before or after. Just:
-{"message":"your message here","actions":[]}
+{"message":"Got it — I'll add those to your board.","actions":[]}
 
 WRONG (do NOT do this):
 \`\`\`json
@@ -202,7 +202,7 @@ Sure! Here's what I think:
 {"message":"...","actions":[]}
 
 RIGHT (do THIS):
-{"message":"your message here","actions":[]}
+{"message":"What time should I remind you?","actions":[]}
 
 ═══ INTELLIGENCE RULES ═══
 
@@ -234,6 +234,10 @@ ASK FIRST when you don't know their preferences:
 - Vague requests: "Tell me more about what you need"
 Use actions: [] when asking questions.
 Only say something is added, saved, or on the board when you emit the matching action in the same reply — never promise an add without its action.
+
+Your message must always be a real sentence for the user. Never write 'placeholder', 'todo', 'TBD', or any other filler as your message — if your actions carry the details, write one sentence summarizing what you did.
+
+When you create a grocery or shopping list, always include the full ingredient list in your message text too, so users without shared lists still have it.
 
 CALENDAR/MEETING FLOW:
 When a user wants to schedule a meeting or event, gather ALL details before creating the calendar link:
@@ -663,6 +667,15 @@ export async function generateAIResponse(
 
 // ─── BULLETPROOF JSON PARSER ───────────────────────────────────────
 
+// A message that is only filler ("placeholder", "todo", ...) carries no
+// content. Treat it as empty so the caller falls back to summarizing the
+// actions instead of showing the filler word to the user (Oct 31 bug:
+// grocery actions landed on the board while chat showed "placeholder").
+function isFillerMessage(msg: string): boolean {
+  const cleaned = msg.trim().toLowerCase().replace(/[^a-z0-9]+/g, '')
+  return cleaned === 'placeholder' || cleaned === 'placeholdertext' || cleaned === 'todo' || cleaned === 'tbd'
+}
+
 function parseAIResponse(raw: string, userMessage: string, state: AppState): AIResponse {
   let text = raw.trim()
 
@@ -670,7 +683,7 @@ function parseAIResponse(raw: string, userMessage: string, state: AppState): AIR
   try {
     const p = JSON.parse(text)
     const msg = p.message || p.text || p.response || p.content
-    if (typeof msg === 'string' && msg.trim()) return { message: msg, actions: Array.isArray(p.actions) ? p.actions : [] }
+    if (typeof msg === 'string' && msg.trim() && !isFillerMessage(msg)) return { message: msg, actions: Array.isArray(p.actions) ? p.actions : [] }
     // Actions without any message text — summarize them instead of
     // falling through to a meaningless "I'm on it!" (this was the
     // meal-plan loop: the model returned actions, the parser found
@@ -683,7 +696,7 @@ function parseAIResponse(raw: string, userMessage: string, state: AppState): AIR
   try {
     const p = JSON.parse(stripped)
     const msg = p.message || p.text || p.response || p.content
-    if (typeof msg === 'string' && msg.trim()) return { message: msg, actions: Array.isArray(p.actions) ? p.actions : [] }
+    if (typeof msg === 'string' && msg.trim() && !isFillerMessage(msg)) return { message: msg, actions: Array.isArray(p.actions) ? p.actions : [] }
     if (Array.isArray(p.actions) && p.actions.length > 0) return { message: summarizeActions(p.actions), actions: p.actions }
   } catch {}
 
@@ -700,7 +713,7 @@ function parseAIResponse(raw: string, userMessage: string, state: AppState): AIR
       try {
         const p = JSON.parse(text.substring(start, end + 1))
         const msg = p.message || p.text || p.response || p.content
-        if (typeof msg === 'string' && msg.trim()) return { message: msg, actions: Array.isArray(p.actions) ? p.actions : [] }
+        if (typeof msg === 'string' && msg.trim() && !isFillerMessage(msg)) return { message: msg, actions: Array.isArray(p.actions) ? p.actions : [] }
         if (Array.isArray(p.actions) && p.actions.length > 0) return { message: summarizeActions(p.actions), actions: p.actions }
       } catch {}
     }
@@ -716,7 +729,12 @@ function parseAIResponse(raw: string, userMessage: string, state: AppState): AIR
     if (actMatch) {
       try { actions = JSON.parse(actMatch[1]) } catch {}
     }
-    return { message, actions }
+    if (isFillerMessage(message)) {
+      if (actions.length > 0) return { message: summarizeActions(actions), actions }
+      // No actions either — fall through to the plain-text strategies
+    } else {
+      return { message, actions }
+    }
   }
 
   // Strategy 5: Remove all JSON artifacts and use as plain text
@@ -745,6 +763,8 @@ function parseAIResponse(raw: string, userMessage: string, state: AppState): AIR
 // Turn a bare action list (no message text from the model) into a
 // readable reply so the user sees what actually happened.
 function summarizeActions(actions: AIAction[]): string {
+  const bulkCount = actions.filter(a => a.type === 'add_multiple_items').reduce((n, a) => n + (a.payload?.items?.length || 0), 0)
+  if (bulkCount > 0) return `Done — added ${bulkCount} item${bulkCount === 1 ? '' : 's'} to your board.`
   const added = actions.filter(a => a.type === 'add_item' && a.payload?.text).map(a => `"${a.payload.text}"`)
   if (added.length > 0) return `Done — added ${added.join(', ')} to your board.`
   if (actions.some(a => a.type === 'add_person')) return 'Done — added them to your People.'
