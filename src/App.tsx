@@ -412,6 +412,10 @@ function App() {
 
     const syncCloud = async () => {
       
+      // Snapshot the device state BEFORE any wipe, so a brand-new
+      // account (no cloud data) can adopt it instead of losing it
+      // (Oct 31 bug: sign-in wiped an active trial + chat + tasks).
+      const preWipeLocal = loadState()
       // CRITICAL: If a different user signed in, stash the local state
       // first (so nothing is silently destroyed) and then clear it.
       if (isDifferentUser) {
@@ -461,9 +465,26 @@ function App() {
       } else {
         // No cloud data for this user
         if (isDifferentUser) {
-          // Brand new user on this device — fresh start
-          const name = userName || 'Friend'
-          setState({ ...DEFAULT_STATE, profile: { ...DEFAULT_STATE.profile, name, onboarded: true } })
+          // Brand-new account: ADOPT the device state instead of
+          // wiping it. A new account has nothing to protect, so the
+          // old fresh-start destroyed the user's trial, chat, and
+          // tasks for no benefit (Oct 31 trial-loss bug). Trials
+          // follow the account: a brand-new account without an active
+          // premium subscription gets its one 7-day premium trial.
+          if (preWipeLocal.profile?.onboarded) {
+            const adopted: any = { ...preWipeLocal }
+            const sub = adopted.subscription || {}
+            const now = Date.now()
+            const hasActivePremium = sub.tier === 'enterprise' || (sub.tier === 'premium' && (!sub.isTrial || (sub.trialEndsAt && new Date(sub.trialEndsAt).getTime() > now)))
+            if (!hasActivePremium) {
+              adopted.subscription = { tier: 'premium', isTrial: true, trialEndsAt: new Date(now + 7 * 86400000).toISOString() }
+            }
+            setState(prev => ({ ...DEFAULT_STATE, ...adopted }))
+            await saveUserData(currentUserId, { ...adopted, chatHistory: (adopted.chatHistory || []).slice(-100), lastSyncedAt: new Date().toISOString() })
+          } else {
+            const name = userName || 'Friend'
+            setState({ ...DEFAULT_STATE, profile: { ...DEFAULT_STATE.profile, name, onboarded: true } })
+          }
         } else {
           const localData = loadState()
           if (localData.profile?.onboarded) {
