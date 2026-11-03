@@ -326,6 +326,7 @@ export function JournalView({ state, addJournalEntry, deleteJournalEntry, update
   const seenFinalsRef = useRef<Set<string>>(new Set())
   const processedIdxRef = useRef(0)
   const restartTimeoutRef = useRef<any>(null)
+  const nativeSessionRef = useRef<DictationSession | null>(null) // Declared here: the unmount cleanup + native stop paths reference it; without this the app crashes with "nativeSessionRef is not defined" when leaving the Journal tab.
   const [isCleaningTranscript, setIsCleaningTranscript] = useState(false)
   const [speakingTarget, setSpeakingTarget] = useState<'summary' | 'entry' | 'reflection' | null>(null)
   const ttsRef = useRef<SpeechSynthesisUtterance | null>(null)
