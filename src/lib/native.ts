@@ -232,3 +232,27 @@ export async function scheduleNativeLocalNotification(opts: {
     return false
   }
 }
+
+/** Stable numeric ids for scheduled notifications (the plugin uses numbers). */
+export function hashStringId(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h = h & h }
+  return Math.abs(h)
+}
+
+/** Due-day alarm id for a board item (range 100000–499999). */
+export function dueDayId(itemId: string): number { return 100000 + (hashStringId(itemId) % 400000) }
+
+/** Day-before alarm id for a board item (range 500000–899999). */
+export function dayBeforeId(itemId: string): number { return 500000 + (hashStringId(itemId) % 400000) }
+
+/** Cancel scheduled native notifications by id; no-op on web. */
+export async function cancelNativeLocalNotifications(ids: number[]): Promise<void> {
+  if (!isNative() || ids.length === 0) return
+  try {
+    const { LocalNotifications } = await import('@capacitor/local-notifications')
+    await LocalNotifications.cancel({ notifications: ids.map(id => ({ id })) })
+  } catch (err) {
+    console.error('[native] Cancel notification failed:', err)
+  }
+}
