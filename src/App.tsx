@@ -6,6 +6,7 @@ import { MainApp } from '@/components/MainApp'
 import { AccountView } from '@/components/AccountView'
 import { IOSInstallPrompt } from '@/components/IOSInstallPrompt'
 import { useNotifications } from '@/hooks/use-notifications'
+import { isNative, scheduleNativeLocalNotification, cancelNativeLocalNotifications, dueDayId, dayBeforeId } from '@/lib/native'
 import { useLocation, type UserLocation } from '@/hooks/use-location'
 import { useDailyNudges } from '@/hooks/use-daily-nudges'
 import { usePushSubscribe } from '@/hooks/use-push-subscribe'
@@ -582,10 +583,24 @@ function App() {
   useEffect(() => {
     // Cancel all first to prevent timer accumulation on every state change
     state.items.forEach(item => notifications.cancelReminder(item.id))
+    if (isNative()) {
+      // The hook's scheduleReminder needs a service worker, which the
+      // native WebView doesn't provide — cancel + reschedule natively.
+      const ids: number[] = []
+      state.items.forEach(item => ids.push(dueDayId(item.id), dayBeforeId(item.id)))
+      cancelNativeLocalNotifications(ids)
+    }
     if (state.profile.notificationsEnabled) {
       state.items.forEach(item => {
         if (item.status === 'pending' && item.dueDate) {
-          notifications.scheduleReminder(item)
+          if (isNative()) {
+            const due = new Date(item.dueDate + 'T09:00:00')
+            const eve = new Date(due.getTime() - 16 * 3600000)
+            if (eve.getTime() > Date.now()) scheduleNativeLocalNotification({ id: dayBeforeId(item.id), title: '📋 Life Pilot AI', body: `Heads up — "${item.text}" is due tomorrow!`, at: eve })
+            if (due.getTime() > Date.now()) scheduleNativeLocalNotification({ id: dueDayId(item.id), title: '⚡ Life Pilot AI — Due Today!', body: item.text, at: due })
+          } else {
+            notifications.scheduleReminder(item)
+          }
         }
       })
     }
@@ -678,6 +693,7 @@ function App() {
 
   const removeItem = useCallback((id: string) => {
     notifications.cancelReminder(id)
+    if (isNative()) cancelNativeLocalNotifications([dueDayId(id), dayBeforeId(id)])
     setState(prev => ({ ...prev, items: prev.items.filter(i => i.id !== id) }))
   }, [])
 
