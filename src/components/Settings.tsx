@@ -439,6 +439,7 @@ export function Settings({ state, notifications, locationHook, updateProfile, se
                 </button>
               ))}
             </div>
+            <p className="text-xs text-stone-500 mt-3">This caps your total daily nudges — task reminders, affirmations, journal and habit nudges combined.</p>
             <div className="mt-3 flex items-center gap-2">
               <span className="text-xs text-stone-500">Quiet hours:</span>
               <select value={state.quietHoursStart || 22} onChange={e => updateState({ quietHoursStart: parseInt(e.target.value) })}
