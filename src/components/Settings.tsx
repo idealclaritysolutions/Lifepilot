@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import type { AppState, UserProfile } from '@/App'
 import type { UserLocation } from '@/hooks/use-location'
@@ -33,9 +33,10 @@ interface Props {
   updateState: (updates: Partial<AppState>) => void
   onClose: () => void
   onReset: () => void
+  onGoToAccount?: () => void
 }
 
-export function Settings({ state, notifications, locationHook, updateProfile, setUserLocation, updateState, onClose, onReset }: Props) {
+export function Settings({ state, notifications, locationHook, updateProfile, setUserLocation, updateState, onClose, onReset, onGoToAccount }: Props) {
   const [enablingNotif, setEnablingNotif] = useState(false)
   const [enablingLoc, setEnablingLoc] = useState(false)
   const [legalPage, setLegalPage] = useState<'privacy' | 'terms' | null>(null)
@@ -48,38 +49,52 @@ export function Settings({ state, notifications, locationHook, updateProfile, se
   const auth = useAuth()
   const user = auth.user // Supabase user (the auth object itself has no .id — using it directly is why Connect never fired)
 
+  const checkGoogleStatus = useCallback(() => {
+    if (!user?.id) return
+    fetch(`${apiBase()}/api/google-status?userId=${user.id}`).then(r => r.json()).then(d => {
+      if (d.connected) setGoogleEmail(d.email)
+    }).catch(() => {})
+  }, [user?.id])
+
   // Check Google connection status
   useEffect(() => {
-    if (user?.id) {
-      fetch(`${apiBase()}/api/google-status?userId=${user.id}`).then(r => r.json()).then(d => {
-        if (d.connected) setGoogleEmail(d.email)
-      }).catch(() => {})
-    }
+    checkGoogleStatus()
     // Check URL params for connection callback
     const params = new URLSearchParams(window.location.search)
     if (params.get('google_connected') === 'true') {
       toast.success('Google Calendar connected!')
       window.history.replaceState({}, '', window.location.pathname)
-      if (user?.id) {
-        fetch(`${apiBase()}/api/google-status?userId=${user.id}`).then(r => r.json()).then(d => {
-          if (d.connected) setGoogleEmail(d.email)
-        }).catch(() => {})
-      }
+      checkGoogleStatus()
     }
     if (params.get('google_error')) {
       toast.error('Google connection failed. Please try again.')
       window.history.replaceState({}, '', window.location.pathname)
     }
-  }, [user?.id])
+  }, [checkGoogleStatus])
+
+  // On native, the OAuth flow runs in a system browser tab. When the
+  // user closes it, refresh the connection status so this section
+  // flips to Connected without reopening Settings.
+  useEffect(() => {
+    if (!isNative() || !user?.id) return
+    let remove: (() => void) | undefined
+    import('@capacitor/browser').then(({ Browser }) => {
+      Browser.addListener('browserFinished', () => { checkGoogleStatus() }).then(l => { remove = () => l.remove() })
+    }).catch(() => {})
+    return () => { remove?.() }
+  }, [user?.id, checkGoogleStatus])
 
   const handleGoogleConnect = () => {
     if (!user?.id) return
     const url = `${apiBase()}/api/google-auth?userId=${encodeURIComponent(user.id)}`
-    // On native the auth flow runs in the system browser; tokens live
-    // server-side keyed by userId, so returning to the app shows the
-    // connection on the next status check.
-    if (isNative()) window.open(url, '_blank')
-    else window.location.href = url
+    // On native the auth flow must run in the system browser tab:
+    // window.open does nothing useful inside the WebView, which is
+    // why Connect looked dead on the installed app. The callback
+    // lands on the web app; closing the tab fires browserFinished
+    // above, which refreshes the status.
+    if (isNative()) {
+      import('@capacitor/browser').then(({ Browser }) => Browser.open({ url })).catch(() => { window.open(url, '_blank') })
+    } else window.location.href = url
   }
 
   const handleGoogleDisconnect = async () => {
@@ -361,13 +376,15 @@ export function Settings({ state, notifications, locationHook, updateProfile, se
                 </div>
                 <div>
                   <p className="text-sm font-medium text-stone-700">Google Calendar</p>
-                  <p className="text-xs text-stone-600">{googleEmail ? `Connected as ${googleEmail}` : 'Create events from chat and see upcoming events'}</p>
+                  <p className="text-xs text-stone-600">{googleEmail ? `Connected as ${googleEmail}` : user?.id ? 'Create events from chat and see upcoming events' : 'Sign in to your Life Pilot account first, then connect Google Calendar'}</p>
                 </div>
               </div>
               {googleEmail ? (
                 <button onClick={handleGoogleDisconnect} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-stone-100 text-stone-600">Disconnect</button>
+              ) : user?.id ? (
+                <button onClick={handleGoogleConnect} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600 text-white">Connect</button>
               ) : (
-                <button onClick={handleGoogleConnect} disabled={!user?.id} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600 text-white disabled:opacity-40">{user?.id ? 'Connect' : 'Sign in first'}</button>
+                <button onClick={() => { if (onGoToAccount) onGoToAccount(); else { toast.info('Sign in from the Account tab, then come back here to connect.'); onClose() } }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600 text-white">Sign in to connect</button>
               )}
             </div>
           </div>
