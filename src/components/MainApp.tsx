@@ -161,7 +161,7 @@ export function MainApp(props: Props) {
         }
         return next
       })
-    }} onClose={() => setShowSettings(false)} onReset={onReset} />
+    }} onClose={() => setShowSettings(false)} onReset={onReset} onGoToAccount={() => { setShowSettings(false); setShowAccount(true) }} />
   }
 
   if (showCoachCorner) {
