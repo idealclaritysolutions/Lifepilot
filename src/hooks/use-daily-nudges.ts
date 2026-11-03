@@ -1,5 +1,6 @@
 import { useEffect, useCallback } from 'react'
 import type { AppState } from '@/App'
+import { isNative } from '@/lib/native'
 
 const NUDGE_MESSAGES = {
   journal: [
@@ -33,6 +34,29 @@ const NUDGE_MESSAGES = {
   ],
 }
 
+const AFFIRMATIONS = [
+  "You're not behind. You're building — one kept promise at a time.",
+  "The idea you keep postponing doesn't need a perfect plan. It needs today's first step.",
+  "Excuses are fear in disguise. Name the fear, then do the thing anyway.",
+  "Progress isn't loud. It's the task you finished when nobody was watching.",
+  "You don't need more time. You need one decision, made today.",
+  "Who you're becoming is decided by what you do next, not what you did before.",
+  "Small steps count double when you take them daily.",
+  "Your future self is watching today's choices. Make them proud.",
+  "Done beats perfect. Finish the step, then take the next one.",
+  "You survived every hard day so far. Today is just the next one.",
+  "Discipline is choosing what you want most over what you want now.",
+  "You don't have to feel ready to begin. You have to begin to feel ready.",
+  "One page, one rep, one call. That's how big things get built.",
+  "Rest is part of the work. Recharge, then return.",
+  "Compare yourself to who you were last month, not to anyone else today.",
+  "A calm mind gets more done than a rushed one. Breathe, then begin.",
+  "Fear shrinks every time you act despite it. Act once today.",
+  "Celebrate the small win. Momentum is built from evidence, not wishes.",
+  "Consistency beats intensity. Show up again today.",
+  "Clarity comes from action, not thought. Move first, adjust after.",
+]
+
 const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)]
 
 // Module-level set: survives re-renders, prevents race conditions when
@@ -40,7 +64,22 @@ const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)]
 // Acts as a synchronous guard before localStorage can be written.
 const sentInSession = new Set<string>()
 
+function hashTag(tag: string): number {
+  let h = 0
+  for (let i = 0; i < tag.length; i++) { h = ((h << 5) - h) + tag.charCodeAt(i); h = h & h }
+  return Math.abs(h) % 1000000 + 1000
+}
+
 function showNotification(title: string, body: string, tag: string) {
+  // Native: the WebView Notification API never delivers, so go
+  // through Capacitor LocalNotifications instead. This was the
+  // reason daily nudges never arrived on the installed app.
+  if (isNative()) {
+    import('@capacitor/local-notifications').then(({ LocalNotifications }) =>
+      LocalNotifications.schedule({ notifications: [{ id: hashTag(tag), title, body, schedule: { at: new Date(Date.now() + 1000) } }] })
+    ).catch(() => {})
+    return true
+  }
   try {
     if (!('Notification' in window) || Notification.permission !== 'granted') return false
     
@@ -60,6 +99,13 @@ function showNotification(title: string, body: string, tag: string) {
 
 // Schedule a notification via Service Worker setTimeout (survives longer than main thread)
 function scheduleViaSW(text: string, tag: string, delayMs: number) {
+  // Native: no service worker — schedule a real local notification.
+  if (isNative()) {
+    import('@capacitor/local-notifications').then(({ LocalNotifications }) =>
+      LocalNotifications.schedule({ notifications: [{ id: hashTag(tag), title: 'Life Pilot AI', body: text, schedule: { at: new Date(Date.now() + delayMs) } }] })
+    ).catch(() => {})
+    return true
+  }
   try {
     if (navigator.serviceWorker?.controller) {
       navigator.serviceWorker.controller.postMessage({
@@ -80,11 +126,27 @@ export function useDailyNudges(state: AppState) {
 
   const runNudgeCheck = useCallback(() => {
     if (!enabled) return
-    if (!('Notification' in window) || Notification.permission !== 'granted') return
+    // Native delivery goes through Capacitor, not the WebView
+    // Notification API — so the browser permission check only
+    // applies on web. (This guard was the other reason nudges
+    // never fired on the installed app.)
+    if (!isNative() && (!('Notification' in window) || Notification.permission !== 'granted')) return
 
     const now = Date.now()
     const currentHour = new Date().getHours()
     const today = new Date().toDateString()
+
+    // ─── DAILY BUDGET + QUIET HOURS (previously stored but never read) ───
+    // The Nudge Frequency setting (1x/3x/5x) caps TOTAL notifications per
+    // day across all slots; quiet hours suppress sends entirely.
+    const budget = state.notificationFrequency === '1x' ? 1 : state.notificationFrequency === '5x' ? 5 : 3
+    const qhStart = state.quietHoursStart ?? 22
+    const qhEnd = state.quietHoursEnd ?? 7
+    const inQuietHours = (h: number) => qhStart === qhEnd ? false : (qhStart < qhEnd ? (h >= qhStart && h < qhEnd) : (h >= qhStart || h < qhEnd))
+    const countKey = 'lp-nudge-count-' + today
+    const getCount = () => { try { return parseInt(localStorage.getItem(countKey) || '0') } catch { return 0 } }
+    const bumpCount = () => { try { localStorage.setItem(countKey, String(getCount() + 1)) } catch {} }
+    const canSend = () => !inQuietHours(new Date().getHours()) && getCount() < budget
     
     // ─── STRATEGY: "Last nudge" catch-up system ───
     // Instead of rigid time windows, track when we last sent each nudge type
@@ -118,27 +180,36 @@ export function useDailyNudges(state: AppState) {
       "No pressure today. If you do just one thing, let it be something kind for yourself.",
     ]
 
-    // ─── 1. FEATURE/ENGAGEMENT NUDGE — once per day ───
+    // ─── 1. MIDDAY MOMENT — once per day, 12pm–1pm ───
+    // Half the time this is a word of affirmation; otherwise the
+    // usual rotating engagement nudge.
     const lastFeature = getLastSent('feature-' + today)
-    if (!lastFeature && currentHour >= 8 && currentHour <= 21) {
+    if (!lastFeature && currentHour >= 12 && currentHour <= 13 && canSend()) {
       // If mood is low, use gentle nudges instead
       if (isTired) {
         showNotification('Life Pilot AI 💛', pick(GENTLE_NUDGES), 'feature-nudge')
         markSent('feature-' + today)
+        bumpCount()
       } else {
-        const categories = Object.keys(NUDGE_MESSAGES) as (keyof typeof NUDGE_MESSAGES)[]
-        const cat = categories[Math.floor(Math.random() * categories.length)]
-        let msg = pick(NUDGE_MESSAGES[cat])
-        if (cat === 'task') {
-          const pending = state.items.filter(i => i.status === 'pending')
-          if (pending.length > 0) {
-            msg = msg.replace(/TASK/g, pending[Math.floor(Math.random() * pending.length)].text)
-          } else {
-            msg = pick(NUDGE_MESSAGES.chat)
+        let msg: string
+        if (Math.random() < 0.5) {
+          msg = pick(AFFIRMATIONS)
+        } else {
+          const categories = Object.keys(NUDGE_MESSAGES) as (keyof typeof NUDGE_MESSAGES)[]
+          const cat = categories[Math.floor(Math.random() * categories.length)]
+          msg = pick(NUDGE_MESSAGES[cat])
+          if (cat === 'task') {
+            const pending = state.items.filter(i => i.status === 'pending')
+            if (pending.length > 0) {
+              msg = msg.replace(/TASK/g, pending[Math.floor(Math.random() * pending.length)].text)
+            } else {
+              msg = pick(NUDGE_MESSAGES.chat)
+            }
           }
         }
         showNotification('Life Pilot AI ✦', msg, 'feature-nudge')
         markSent('feature-' + today)
+        bumpCount()
       }
     }
 
@@ -147,24 +218,28 @@ export function useDailyNudges(state: AppState) {
       const lastTaskNudge = getLastSent('tasks-' + today)
       if (!lastTaskNudge) {
         const pendingTasks = state.items.filter(i => i.status === 'pending')
-        if (pendingTasks.length > 0 && currentHour >= 9 && currentHour <= 18) {
+        if (pendingTasks.length > 0 && currentHour >= 9 && currentHour <= 18 && canSend()) {
           const task = pendingTasks[Math.floor(Math.random() * pendingTasks.length)]
           const msg = pick(NUDGE_MESSAGES.task).replace(/TASK/g, task.text)
           // Send now + schedule another for 4 hours from now via SW
           showNotification('📋 Life Pilot AI', msg, 'task-nudge')
           markSent('tasks-' + today)
-          // Schedule a second task nudge for later today
-          if (currentHour < 15 && pendingTasks.length > 1) {
+          bumpCount()
+          // The second task nudge is a Proactive-tier extra: it only
+          // exists at budget 5, so it never eats the journal slot
+          // at 1x/3x. It must also land outside quiet hours.
+          if (currentHour < 15 && pendingTasks.length > 1 && budget >= 5 && !inQuietHours((currentHour + 4) % 24) && getCount() < budget) {
             const task2 = pendingTasks.find(t => t.id !== task.id) || pendingTasks[0]
             const msg2 = pick(NUDGE_MESSAGES.task).replace(/TASK/g, task2.text)
             scheduleViaSW(msg2, 'task-nudge-2', 4 * 60 * 60 * 1000)
+            bumpCount()
           }
         }
       }
     }
 
     // ─── 3. EVENING JOURNAL NUDGE — once per day at 7pm+ if no entry ───
-    if (currentHour >= 19 && currentHour <= 22) {
+    if (currentHour >= 19 && currentHour <= 22 && canSend()) {
       const lastJournal = getLastSent('journal-' + today)
       if (!lastJournal) {
         const todayEntries = state.journal.filter(e => new Date(e.createdAt).toDateString() === today)
@@ -173,12 +248,13 @@ export function useDailyNudges(state: AppState) {
             "Your day had moments worth remembering. Take 60 seconds to write one down before it slips away.",
             'journal-evening')
           markSent('journal-' + today)
+          bumpCount()
         }
       }
     }
 
     // ─── 4. EVENING HABIT NUDGE — once per day at 8pm+ if no habits checked ───
-    if (tier !== 'free' && currentHour >= 20 && currentHour <= 22) {
+    if (tier !== 'free' && currentHour >= 20 && currentHour <= 22 && canSend()) {
       const lastHabit = getLastSent('habits-' + today)
       if (!lastHabit && state.habits.length > 0) {
         const todayStr = new Date().toISOString().split('T')[0]
@@ -188,6 +264,7 @@ export function useDailyNudges(state: AppState) {
             "Your habits are waiting for today's check mark. One tap keeps your streak alive.",
             'habit-evening')
           markSent('habits-' + today)
+          bumpCount()
         }
       }
     }
@@ -200,17 +277,18 @@ export function useDailyNudges(state: AppState) {
       // Schedule evening journal nudge — once per day only
       const todayEntries = state.journal.filter(e => new Date(e.createdAt).toDateString() === today)
       const alreadyScheduled = getLastSent('sw-journal-sched-' + today)
-      if (todayEntries.length === 0 && !getLastSent('journal-' + today) && !alreadyScheduled) {
+      if (todayEntries.length === 0 && !getLastSent('journal-' + today) && !alreadyScheduled && !inQuietHours(19) && getCount() < budget) {
         scheduleViaSW(
           "Your day had moments worth remembering. Take 60 seconds to write one down.",
           'sw-journal-' + today,
           hoursUntilEvening * 60 * 60 * 1000
         )
         markSent('sw-journal-sched-' + today)
+        bumpCount()
       }
     }
 
-  }, [enabled, tier, state.items, state.journal, state.habits])
+  }, [enabled, tier, state.items, state.journal, state.habits, state.notificationFrequency, state.quietHoursStart, state.quietHoursEnd])
 
   useEffect(() => {
     // Run on mount (after 2 second delay to let SW register)
