@@ -260,6 +260,7 @@ CATEGORY GUIDANCE:
 - Use "grocery" for items to buy at the store (milk, eggs, bread, chicken, etc.)
 - Use "meal" for cooking/recipes/meal planning (not shopping items)
 - When user says "grocery list" or "I need to buy [food items]" → category: "grocery"
+- When you emit a shopping/grocery list (e.g., ingredients for a meal plan), set category "grocery" on every item so it routes to the user's shared list.
 - When user says "what should I cook" or "plan dinner" → category: "meal"
 
 ═══ ACTIONS ═══
