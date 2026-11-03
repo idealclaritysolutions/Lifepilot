@@ -76,7 +76,15 @@ export function ChatView(props: Props) {
     const isGroceryPayload = (p: any) => {
       if (!p?.text) return false
       if (p.category === 'grocery') return true
-      if (!p.category) { try { return detectCategory(p.text) === 'grocery' } catch { return false } }
+      if (!p.category) {
+        // Bare ingredients ("2 lbs chicken thighs", "tomatoes") carry
+        // no category and detectCategory misses them, so recognize
+        // ingredient-like text directly: a food word, or a quantity
+        // with a unit (2 lbs, 3 cans, 1 bunch).
+        if (/\b(chicken|beef|pork|fish|salmon|tilapia|catfish|shrimp|turkey|lamb|goat|egg|milk|cheese|butter|yogurt|cream|bread|rice|pasta|noodle|flour|sugar|salt|pepper|oil|tomato|onion|garlic|ginger|potato|yam|plantain|beans|ewa|jollof|suya|spinach|kale|lettuce|carrot|cucumber|fruit|apple|banana|orange|mango|avocado|vegetable|produce|snack|chips|juice|cereal|oat|honey|spice|herb|basil|parsley|stock|broth|sauce|vinegar|mayo|ketchup|sausage|bacon|ham|tofu|lentil|chickpea|corn|pea|mushroom|lemon|lime|strawberry|blueberry|grape|melon|pineapple|coconut|almond|cashew|peanut|walnut|coffee|tea|chocolate)\b/i.test(p.text)) return true
+        if (/\b\d+\s*(lbs?|kg|g|oz|cups?|tbsp|tsp|pcs|packs?|bunch|cloves?|cans?|bottles?|bags?|sticks?|heads?|slices?)\b/i.test(p.text)) return true
+        try { return detectCategory(p.text) === 'grocery' } catch { return false }
+      }
       return false
     }
     const groceryItems: { text: string }[] = []
@@ -103,8 +111,20 @@ export function ChatView(props: Props) {
       actionsToRun = remaining
       const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0]
       const hasListsAccess = state.subscription?.tier === 'premium' || state.subscription?.tier === 'enterprise'
-      const lists = sharedListsRef.current || []
+      let lists = sharedListsRef.current || []
       let appendedTo: string | null = null
+      if (hasListsAccess && userId && lists.length === 0) {
+        // No shared list yet — create a Groceries list so the
+        // ingredients always have a home in Lists.
+        try {
+          const created = await createHousehold(userId, 'Groceries')
+          if (created) {
+            const entry = { id: created.id, name: 'Groceries' } as HouseholdInfo
+            sharedListsRef.current = [...lists, entry]
+            lists = sharedListsRef.current
+          }
+        } catch {}
+      }
       if (hasListsAccess && userId && lists.length > 0) {
         const target = lists.find((h: any) => /grocer|shop/i.test(h.name || '')) || lists[0]
         for (const g of groceryItems) {
@@ -749,18 +769,16 @@ export function ChatView(props: Props) {
 
     rec.onend = () => {
       if (!chatStoppedByUserRef.current) {
-        const isAndroid = /android/i.test(navigator.userAgent)
-        if (isAndroid) {
-          // Android: stop cleanly. Text stays in input. User taps mic to continue or send.
-          setIsListening(false)
-        } else {
-          // iOS: restart seamlessly
-          chatProcessedIdxRef.current = 0
-          chatRestartTimeoutRef.current = setTimeout(() => {
-            if (!chatStoppedByUserRef.current) launchChatRecognition()
-            else setIsListening(false)
-          }, 500)
-        }
+        // Restart seamlessly on all platforms, like the journal mic.
+        // Android Chrome kills continuous recognition after ~5s;
+        // the dedup guards above prevent replayed segments from
+        // duplicating text, so the mic now keeps listening until
+        // the user taps it off instead of cutting out mid-thought.
+        chatProcessedIdxRef.current = 0
+        chatRestartTimeoutRef.current = setTimeout(() => {
+          if (!chatStoppedByUserRef.current) launchChatRecognition()
+          else setIsListening(false)
+        }, 500)
       } else {
         setIsListening(false)
       }
