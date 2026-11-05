@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { LegalPage } from '@/components/LegalPages'
 import { AccountSection, useAuth } from '@/components/AuthGate'
 import { isNative } from '@/lib/native'
+import { apiBase } from '@/lib/api-base'
 
 const IS_STORE_BUILD = import.meta.env.VITE_STORE_BUILD === 'true'
 const ENERGY_DRAINERS = [
