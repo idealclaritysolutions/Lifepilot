@@ -28,7 +28,7 @@
   <h2>Information We Collect</h2>
   <p><strong>Account information:</strong> When you create an account, we collect your email address and name. If you sign in with Google, we receive your name and email from Google's authentication service.</p>
   <p><strong>App data:</strong> The App stores data you create, including tasks, goals, journal entries, habits, shared lists, people and events, focus session history, and chat messages with the AI assistant. This data is stored in our secure database (Supabase) and synced across your devices.</p>
-  <p><strong>Google Calendar and Gmail (optional):</strong> If you choose to connect your Google account, the App accesses your Google Calendar events and Gmail messages to provide schedule summaries and email insights within the App. We do not store your emails or calendar data on our servers. It is fetched in real time and displayed only to you. Access tokens are stored securely and can be revoked at any time in Settings.</p>
+  <p><strong>Google Calendar (optional):</strong> If you choose to connect your Google account, the App accesses your Google Calendar events to show upcoming events on your board and to create events you ask for in chat. Calendar events are fetched in real time and displayed only to you; event data is not stored on our servers. Access tokens are stored AES-256-GCM encrypted and can be revoked at any time in Settings, which also deletes the stored token. Life Pilot AI's use of Google API data adheres to the Google API Services User Data Policy, including the Limited Use requirements.</p>
   <p><strong>Push notification tokens:</strong> If you enable notifications, we store a push subscription token to send you personalized reminders.</p>
   <p><strong>Usage data:</strong> We may collect anonymized usage analytics to improve the App.</p>
 
@@ -39,7 +39,7 @@
   <p>Your chat messages, journal entries, tasks, habits, and goals may be sent to Anthropic's Claude API to generate AI responses, summaries, and coaching insights. This data is processed in real time and is subject to Anthropic's data handling policies. We do not use your data to train AI models.</p>
 
   <h2>Data Sharing</h2>
-  <p>We do not sell, rent, or share your personal data with third parties, except as necessary to provide the service: Supabase for data storage, Anthropic for AI processing, Stripe for payment processing, and Google for calendar and email integration when you opt in.</p>
+  <p>We do not sell, rent, or share your personal data with third parties, except as necessary to provide the service: Supabase for data storage, Anthropic for AI processing, Stripe for payment processing, and Google for calendar integration when you opt in.</p>
 
   <h2>Shared Lists</h2>
   <p>If you use the Shared Lists feature, list items and activity are visible to all members of that shared list. You control who has access by sharing or revoking the list's join code.</p>
@@ -51,7 +51,7 @@
   <p>Your data is retained as long as your account is active. You can delete your account and all associated data at any time from Settings. Upon deletion, all your data is permanently removed from our systems within 30 days.</p>
 
   <h2>Google API Disclosure</h2>
-  <p>Life Pilot AI's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API Services User Data Policy</a>, including the Limited Use requirements. We only access Google Calendar and Gmail data when you explicitly connect your Google account, and we use this data solely to display your schedule and email summaries within the App.</p>
+  <p>Life Pilot AI's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API Services User Data Policy</a>, including the Limited Use requirements. We only access Google Calendar data when you explicitly connect your Google account, and we use this data solely to display your schedule and create events you ask for within the App.</p>
 
   <h2>Children's Privacy</h2>
   <p>The App is not intended for children under 13. We do not knowingly collect personal information from children under 13.</p>
