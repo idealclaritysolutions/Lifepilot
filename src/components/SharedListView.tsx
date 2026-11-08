@@ -8,6 +8,7 @@ import {
 } from '@/lib/supabase'
 import { ArrowLeft, Plus, Users, Copy, Check, Trash2, ShoppingCart, LogOut, Loader2, ChevronRight, StickyNote, Link as LinkIcon, Pencil, History, Clock, Crown, MoreHorizontal, Search, Share2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { shoppingSearchUrl } from '@/lib/shopping-links'
 import type { AppState } from '@/App'
 
 interface Props {
@@ -84,7 +85,6 @@ export function SharedListView({ onClose, state, isTab }: Props) {
   const [newItemDate, setNewItemDate] = useState('')
   const [newItemTime, setNewItemTime] = useState('')
   const [newItemLocation, setNewItemLocation] = useState('')
-  const [newItemLink, setNewItemLink] = useState('')
   const [showItemDetails, setShowItemDetails] = useState(false)
   const [joinCode, setJoinCode] = useState('')
   const [householdName, setHouseholdName] = useState('')
@@ -102,7 +102,6 @@ export function SharedListView({ onClose, state, isTab }: Props) {
   const [detDate, setDetDate] = useState('')
   const [detTime, setDetTime] = useState('')
   const [detLocation, setDetLocation] = useState('')
-  const [detLink, setDetLink] = useState('')
   const [detCategory, setDetCategory] = useState('General')
   const settingsRef = useRef<HTMLDivElement | null>(null)
   const [nameMap, setNameMap] = useState<Record<string, string>>({})
@@ -208,7 +207,6 @@ export function SharedListView({ onClose, state, isTab }: Props) {
       checked: false,
       added_by: user.id,
       notes: fullNotes,
-      link: newItemLink.trim() || undefined,
     })
     await logActivity(activeHH.id, user.id, 'added', newItem.trim())
     setNewItem('')
@@ -216,7 +214,6 @@ export function SharedListView({ onClose, state, isTab }: Props) {
     setNewItemDate('')
     setNewItemTime('')
     setNewItemLocation('')
-    setNewItemLink('')
     setNewItemCategory('General')
     setShowItemDetails(false)
     const updated = await getSharedItems(activeHH.id)
@@ -284,10 +281,7 @@ export function SharedListView({ onClose, state, isTab }: Props) {
     const packed = packMeta({ date: detDate, time: detTime, location: detLocation, note: meta.note })
     await updateSharedItemNotes(id, packed)
     await updateSharedItemCategory(id, detCategory)
-    if (detLink !== (item.link || '')) {
-      await updateSharedItemText(id, item.text, detLink.trim())
-    }
-    setItems(prev => prev.map(i => i.id === id ? { ...i, notes: packed, category: detCategory, link: detLink.trim() || undefined } : i))
+    setItems(prev => prev.map(i => i.id === id ? { ...i, notes: packed, category: detCategory } : i))
     setEditingDetails(null)
   }
 
@@ -349,7 +343,7 @@ export function SharedListView({ onClose, state, isTab }: Props) {
               { icon: '🎉', title: 'Event & trip planning', desc: 'Coordinate birthdays, vacations, and gatherings with everyone on the same page.' },
               { icon: '🤖', title: 'AI-powered list building', desc: 'Ask Life Pilot AI to find products, compare prices, and add them with links — straight to your shared list.' },
               { icon: '📝', title: 'Notes on every item', desc: 'Add context like "the organic one" or "size medium" so nothing gets lost in translation.' },
-              { icon: '🔗', title: 'Links on items', desc: 'Add a real link to any item and tap it to open it — or ask Life Pilot AI to add items with links for you.' },
+              { icon: '🔗', title: 'Shop links on every item', desc: 'Every item carries a Google Shopping link — tap it to find that exact item and compare prices. Items the AI adds with a real product link keep that link instead.' },
               { icon: '👥', title: 'Unlimited lists, unlimited members', desc: 'Family groceries, friend group trips, roommate chores — create as many lists as your life needs.' },
             ].map(f => (
               <div key={f.title} className="flex gap-3">
@@ -424,7 +418,7 @@ export function SharedListView({ onClose, state, isTab }: Props) {
             </div>
             <button onClick={() => setShowItemDetails(!showItemDetails)}
               className="text-xs text-amber-600 hover:text-amber-700 font-medium px-1">
-              {showItemDetails ? '− Hide details' : '+ Add date, time, location, note, category, link'}
+              {showItemDetails ? '− Hide details' : '+ Add date, time, location, note, category'}
             </button>
             {showItemDetails && (
               <div className="grid grid-cols-2 gap-2">
@@ -434,9 +428,6 @@ export function SharedListView({ onClose, state, isTab }: Props) {
                   className="px-3 py-2 rounded-lg border border-stone-200 text-sm text-stone-700 bg-stone-50" />
                 <input value={newItemLocation} onChange={e => setNewItemLocation(e.target.value)}
                   placeholder="📍 Location (optional)"
-                  className="col-span-2 px-3 py-2 rounded-lg border border-stone-200 text-sm text-stone-700 placeholder:text-stone-400 bg-stone-50" />
-                <input value={newItemLink} onChange={e => setNewItemLink(e.target.value)}
-                  placeholder="🔗 Link (optional — where to buy it)"
                   className="col-span-2 px-3 py-2 rounded-lg border border-stone-200 text-sm text-stone-700 placeholder:text-stone-400 bg-stone-50" />
                 <input value={newItemNote} onChange={e => setNewItemNote(e.target.value)}
                   placeholder="📝 Note (optional)"
@@ -517,9 +508,13 @@ export function SharedListView({ onClose, state, isTab }: Props) {
                                 <p className="text-xs text-stone-500 mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1">
                                   <span>Added by {authorName}</span>
                                   {item.created_at && <span>· {new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
-                                  {hasLink && (
+                                  {hasLink ? (
                                     <a href={item.link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-full">
                                       <LinkIcon className="w-3 h-3" /> Open link
+                                    </a>
+                                  ) : (
+                                    <a href={shoppingSearchUrl(item.text)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-full">
+                                      <ShoppingCart className="w-3 h-3" /> Shop on Google
                                     </a>
                                   )}
                                 </p>
@@ -544,7 +539,7 @@ export function SharedListView({ onClose, state, isTab }: Props) {
                               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-stone-50 text-xs text-stone-600 hover:bg-stone-100">
                               <StickyNote className="w-3 h-3" /> Note
                             </button>
-                            <button onClick={() => { const m = parseMeta(item.notes); setEditingDetails(editingDetails === item.id ? null : item.id!); setDetDate(m.date); setDetTime(m.time); setDetLocation(m.location); setDetCategory(item.category && LIST_CATEGORIES.includes(item.category) ? item.category : 'General'); setDetLink(item.link || ''); setItemMenu(null) }}
+                            <button onClick={() => { const m = parseMeta(item.notes); setEditingDetails(editingDetails === item.id ? null : item.id!); setDetDate(m.date); setDetTime(m.time); setDetLocation(m.location); setDetCategory(item.category && LIST_CATEGORIES.includes(item.category) ? item.category : 'General'); setItemMenu(null) }}
                               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-stone-50 text-xs text-stone-600 hover:bg-stone-100">
                               Details
                             </button>
@@ -580,8 +575,6 @@ export function SharedListView({ onClose, state, isTab }: Props) {
                               className="px-3 py-2 rounded-lg border border-stone-200 text-sm text-stone-700 bg-stone-50">
                               {LIST_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
-                            <input value={detLink} onChange={e => setDetLink(e.target.value)} placeholder="🔗 Link (optional — where to buy it)"
-                              className="col-span-2 px-3 py-2 rounded-lg border border-stone-200 text-sm text-stone-700 placeholder:text-stone-400 bg-stone-50" />
                             <button onClick={() => handleSaveDetails(item.id!)} className="px-3 py-2 rounded-lg bg-amber-500 text-white text-xs font-medium">Save details</button>
                           </div>
                         )}
