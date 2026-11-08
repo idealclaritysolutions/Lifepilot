@@ -169,6 +169,19 @@ Goal progress:
 ${goalLines}`
 }
 
+// What the Guided plan's Coaching Hub page actually shows (CoachCorner.tsx).
+// Static page copy — the same for everyone asking about Guided — so the
+// chatbot can answer basic questions about the page itself ("what's on my
+// Coaching Hub?", "how do I book my call?"), not just the user's numbers.
+function buildCoachingHubContext(): string {
+  return `═══ COACHING HUB — THE GUIDED PLAN'S PAGE IN THE APP ═══
+The Guided plan ($129.99/mo) has a "Coaching Hub" page with three tabs:
+- Overview: "Your Coaching Plan" — Monthly Goal Review Call (30 min with a real coach to review goals, celebrate wins, plan next moves) and AI Coach — Always On (weekly check-ins, journal insights, habit accountability, daily strategy, real-time guidance in Chat). A "Coach's Snapshot" card shows verified totals (active goals, tasks completed, journal entries, focus minutes). A "Book Your Monthly Goal Review" button opens Calendly to book the 30-min call. "This Week" shows tasks done, journal entries, focus minutes, and habits done today. "Talk to Your AI Coach" offers: "How am I doing this week?", "Help me plan my week", "What should I focus on today?"
+- Goals: "How It Works" — 1. Tell your AI coach what you want to achieve (it creates goals, tasks, and habits). 2. Check off tasks and habits daily on your Board. 3. Once a month, your human coach reviews your goals on a 30-min call. Plus "Set Goals with Your AI Coach" prompts and a list of active goals with % progress.
+- Check-ins: "Your AI Coach" handles weekly check-ins, morning daily briefing, Monday strategy sessions, mood-aware nudges, and real-time coaching in Chat; a "Get This Week's Check-in" button; and a Monthly Goal Review section with a "Book Your Call" button (Calendly).
+Only Guided members see this page in the app. If the user asks where to book their call: the Coaching Hub's "Book Your Monthly Goal Review" button (Calendly). Never invent a booked call time — the app holds no booking records.`
+}
+
 // ─── SYSTEM PROMPT ─────────────────────────────────────────────────
 
 function buildSystemPrompt(state: AppState, sharedLists?: { id: string; name: string; memberCount?: number }[], coaching?: CoachingSnapshot | null): string {
@@ -222,6 +235,7 @@ ${locationContext}
 
 ${buildSubscriptionContext(state)}
 ${coaching ? buildCoachingContext(coaching) : ''}
+${buildCoachingHubContext()}
 
 ═══ THEIR BOARD ═══
 PENDING (${pending.length}):
