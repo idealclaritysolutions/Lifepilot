@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { apiBase } from '@/lib/api-base'
 
 // ─── ADMIN / COACHING API CLIENT ─────────────────────────────────
 //
@@ -29,7 +30,10 @@ async function authedFetch(path: string): Promise<any> {
   if (!headers) {
     throw new ApiError(401, 'Not signed in')
   }
-  const res = await fetch(path, { headers })
+  // apiBase() is '' on web (relative URL, unchanged) and the production
+  // origin inside the native app, where a relative '/api/...' would hit
+  // the phone itself and fail.
+  const res = await fetch(`${apiBase()}${path}`, { headers })
   if (!res.ok) {
     let message = `Request failed (${res.status})`
     try {
