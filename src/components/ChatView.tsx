@@ -3,7 +3,8 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import type { AppState, LifeItem } from '@/App'
 import { hasFeature } from '@/App'
-import { generateAIResponse, detectCategory, uid, QUICK_ACTIONS, type AIAction } from '@/lib/ai-engine'
+import { generateAIResponse, detectCategory, uid, QUICK_ACTIONS, type AIAction, type CoachingSnapshot } from '@/lib/ai-engine'
+import { fetchMyCoaching } from '@/lib/admin-api'
 import { isNative, startDictation, type DictationSession } from '@/lib/native'
 import { apiBase } from '@/lib/api-base'
 import { useDocumentUpload } from '@/hooks/use-document-upload'
@@ -51,6 +52,8 @@ export function ChatView(props: Props) {
   const pendingDocItemsRef = useRef<any[]>([])
   const sharedListsRef = useRef<HouseholdInfo[]>([])
   const { analyzeDocument, analyzing } = useDocumentUpload()
+  const coachingRef = useRef<CoachingSnapshot | null>(null)
+  const coachingFetchedRef = useRef(false)
 
   // Load shared lists for AI context
   useEffect(() => {
@@ -58,6 +61,18 @@ export function ChatView(props: Props) {
       getMyHouseholds(userId).then(hhs => { sharedListsRef.current = hhs })
     }
   }, [userId])
+
+  // Guided coaching snapshot for AI context (enterprise users only).
+  // Best-effort: fetched once, cached, silent on failure — the prompt
+  // always has the local subscription block as its source of truth, so
+  // a failed fetch changes nothing the user sees.
+  useEffect(() => {
+    if (!userId || state.subscription?.tier !== 'enterprise' || coachingFetchedRef.current) return
+    coachingFetchedRef.current = true
+    fetchMyCoaching()
+      .then((data) => { if (data?.isGuided) coachingRef.current = data as CoachingSnapshot })
+      .catch(() => {})
+  }, [userId, state.subscription?.tier])
   const calendar = useCalendar()
 
   useEffect(() => {
@@ -946,8 +961,8 @@ export function ChatView(props: Props) {
     setIsTyping(true)
 
     try {
-      const sharedLists = sharedListsRef.current.map(h => ({ id: h.id, name: h.name }))
-      let response = await generateAIResponse(message, state, state.chatHistory, sharedLists)
+      const sharedLists = sharedListsRef.current.map(h => ({ id: h.id, name: h.name, memberCount: h.memberCount }))
+      let response = await generateAIResponse(message, state, state.chatHistory, sharedLists, undefined, coachingRef.current)
       
       // Check if AI wants to search the web
       let searchAction = response.actions.find(a => a.type === 'web_search')
@@ -1012,7 +1027,7 @@ export function ChatView(props: Props) {
             // Show the actual Google error to help debug
             const errMsg = errData.error || `Search failed (${searchRes.status})`
             addChat({ role: 'assistant', content: `Search couldn't complete: ${errMsg}. Let me help from what I know instead.` })
-            response = await generateAIResponse(message, state, state.chatHistory, sharedLists)
+            response = await generateAIResponse(message, state, state.chatHistory, sharedLists, undefined, coachingRef.current)
             const otherActions2 = response.actions.filter(a => a.type !== 'web_search')
             if (otherActions2.length > 0) executeActions(otherActions2)
             addChat({ role: 'assistant', content: response.message })
@@ -1034,16 +1049,16 @@ export function ChatView(props: Props) {
             response = await generateAIResponse(searchContext, state, [
               ...state.chatHistory.slice(-6),
               { role: 'user' as const, content: message },
-            ], sharedLists)
+            ], sharedLists, undefined, coachingRef.current)
           } else if (searchData.error) {
             console.error('[LifePilot] Search returned error:', searchData.error)
-            response = await generateAIResponse(message + '\n[Web search returned an error. Respond from your knowledge and mention the user can try again.]', state, state.chatHistory, sharedLists)
+            response = await generateAIResponse(message + '\n[Web search returned an error. Respond from your knowledge and mention the user can try again.]', state, state.chatHistory, sharedLists, undefined, coachingRef.current)
           } else {
-            response = await generateAIResponse(message + '\n[Web search found no results. Respond helpfully from your knowledge.]', state, state.chatHistory, sharedLists)
+            response = await generateAIResponse(message + '\n[Web search found no results. Respond helpfully from your knowledge.]', state, state.chatHistory, sharedLists, undefined, coachingRef.current)
           }
         } catch (searchErr: any) {
           console.error('[LifePilot] Search exception:', searchErr?.message)
-          response = await generateAIResponse(message + '\n[Web search is temporarily unavailable. Respond from your knowledge.]', state, state.chatHistory, sharedLists)
+          response = await generateAIResponse(message + '\n[Web search is temporarily unavailable. Respond from your knowledge.]', state, state.chatHistory, sharedLists, undefined, coachingRef.current)
         }
         
         // Remove the "Searching..." message
@@ -1055,7 +1070,7 @@ export function ChatView(props: Props) {
       // be shown as final (it promises board adds that never execute).
       // Regenerate once, concisely, so the actions actually land.
       if (response.stopReason === 'max_tokens' || response.stopReason === 'length') {
-        const retry = await generateAIResponse(message, state, state.chatHistory, sharedLists, true)
+        const retry = await generateAIResponse(message, state, state.chatHistory, sharedLists, true, coachingRef.current)
         if (retry.message && retry.message !== response.message && retry.stopReason !== 'max_tokens' && retry.stopReason !== 'length') {
           response = retry
         } else {
