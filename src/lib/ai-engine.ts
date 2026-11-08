@@ -74,9 +74,104 @@ export function getSnoozeMessage(count: number): string {
   return "This keeps getting pushed. Want to do it, shrink it, or drop it?"
 }
 
+// ─── SUBSCRIPTION & COACHING CONTEXT ───────────────────────────────
+// The chatbot can only answer from what the prompt tells it. Until Nov 8
+// 2026 the prompt never stated the user's actual plan — it listed all
+// four plans generically (FEATURE TOUR) and only checked enterprise vs
+// not-enterprise — so "what plan am I on?" was unanswerable and the
+// model guessed. The YOUR SUBSCRIPTION block below is the single source
+// of truth for plan questions: plan name + tier + trial status + usage.
+
+export interface CoachingSnapshot {
+  isGuided: boolean
+  tier?: string
+  name?: string
+  subscription?: { tier?: string; activatedAt?: string | null; expiresAt?: string | null; promoCode?: string | null }
+  stats?: { activeGoals?: number; pendingTasks?: number; completedTasks?: number; totalHabits?: number; habitsCompletedToday?: number; journalEntries?: number; focusMinutesTotal?: number }
+  goals?: { id?: string; title?: string; category?: string; targetDate?: string | null; progress?: number; totalSteps?: number; completedSteps?: number }[]
+}
+
+// Plan display data, kept in this file on purpose: ai-engine must not
+// import runtime values from App (App → MainApp → ChatView → ai-engine
+// would be a circular import). Prices/names mirror the FEATURE TOUR and
+// the locked store prices.
+const PLAN_INFO: Record<string, { name: string; price: string; messagesPerDay: number; includes: string }> = {
+  free: { name: 'Clarity Starter', price: 'Free', messagesPerDay: 10, includes: 'life board, basic chat, basic journal (5/month), 3 people tracked' },
+  pro: { name: 'Life Pilot', price: '$16.99/mo', messagesPerDay: 40, includes: 'voice journaling, web search (5/day), calendar integration, document scanning, 20 journal entries/month, 15 people' },
+  premium: { name: 'Inner Circle', price: '$34.99/mo', messagesPerDay: 100, includes: 'shared lists (up to 10), habit tracking (15), unlimited journaling, monthly life report, journal export' },
+  enterprise: { name: 'Guided', price: '$129.99/mo', messagesPerDay: 300, includes: 'everything in Inner Circle, monthly 30-min 1-on-1 coaching call, AI weekly strategy session, AI daily coaching, priority support' },
+}
+
+function formatDateShort(iso?: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function buildSubscriptionContext(state: AppState): string {
+  const sub = state.subscription || ({} as AppState['subscription'])
+  const tier = sub.tier || 'free'
+  const info = PLAN_INFO[tier] || PLAN_INFO.free
+  const today = new Date().toDateString()
+  const usedToday = state.usageToday?.date === today ? state.usageToday.messages : 0
+
+  // Trial status — an expired trial means the App effect should have
+  // downgraded them; say so honestly rather than claiming a live trial.
+  let status: string
+  if (sub.isTrial && sub.trialEndsAt) {
+    const end = new Date(sub.trialEndsAt)
+    const daysLeft = Math.ceil((end.getTime() - Date.now()) / 86400000)
+    status = daysLeft > 0
+      ? `7-day free trial of ${info.name} — ends ${formatDateShort(sub.trialEndsAt)} (${daysLeft} day${daysLeft === 1 ? '' : 's'} left)`
+      : `Free trial ended ${formatDateShort(sub.trialEndsAt)} — now on the free plan`
+  } else if (tier === 'free') {
+    status = 'Free plan'
+  } else {
+    status = `Paid plan${sub.activatedAt ? `, active since ${formatDateShort(sub.activatedAt)}` : ''}${sub.expiresAt ? `, renews ${formatDateShort(sub.expiresAt)}` : ''}`
+  }
+
+  const pendingCount = state.items.filter(i => i.status === 'pending').length
+  const doneCount = state.items.filter(i => i.status === 'done').length
+  const locked = tier === 'enterprise'
+    ? ''
+    : tier === 'premium'
+      ? `Not on your plan: Guided 1-on-1 coaching calls, AI weekly strategy session, AI daily coaching (Guided, $129.99/mo).`
+      : tier === 'pro'
+        ? `Not on your plan: shared lists, habit tracking, unlimited journaling, monthly life report (Inner Circle, $34.99/mo); Guided coaching calls (Guided, $129.99/mo).`
+        : `Not on your plan: voice journaling, web search, calendar integration, shared lists, habit tracking (Life Pilot, $16.99/mo unlocks most; Inner Circle, $34.99/mo adds lists + habits).`
+
+  return `═══ YOUR SUBSCRIPTION — ANSWER PLAN QUESTIONS ONLY FROM THIS BLOCK, NEVER GUESS ═══
+Plan: ${info.name} (${tier}) — ${info.price}
+Status: ${status}
+AI messages today: ${usedToday} of ${info.messagesPerDay} used
+Your plan includes: ${info.includes}.
+${locked}
+Your data at a glance: ${pendingCount} pending tasks (${doneCount} completed), ${state.journal.length} journal entries, ${state.habits.length} habits, ${state.people.length} people, ${(state.goals || []).filter(g => g.status === 'active').length} active goals, ${state.purchases.length} purchases logged.`
+}
+
+// Guided coaching snapshot (server-verified via /api/my-coaching — the
+// caller's own row only). The app holds NO record of booked coaching
+// calls or coach notes (calls are booked via an external Calendly link),
+// so this block states that plainly instead of inventing a next call.
+function buildCoachingContext(coaching: CoachingSnapshot): string {
+  if (!coaching?.isGuided) return ''
+  const s = coaching.stats || {}
+  const goals = (coaching.goals || []).slice(0, 5)
+  const goalLines = goals.length > 0
+    ? goals.map(g => `- "${g.title}" — ${g.progress ?? 0}% (${g.completedSteps ?? 0}/${g.totalSteps ?? 0} steps)${g.targetDate ? `, due ${formatDateShort(g.targetDate)}` : ''}`).join('\n')
+    : 'No active goals yet.'
+  return `═══ GUIDED COACHING — SERVER-VERIFIED SNAPSHOT (their human coach) ═══
+Monthly 30-min 1-on-1 coaching call included — they book it from the Coaching Hub (Calendly link in-app). The app holds no record of booked calls or coach notes, so never claim to know when their next call is — if they ask, point them to the Coaching Hub to check their booking.
+Plan activated: ${formatDateShort(coaching.subscription?.activatedAt) || 'unknown'}.
+Verified totals: ${s.activeGoals ?? 0} active goals, ${s.completedTasks ?? 0} tasks completed, ${s.pendingTasks ?? 0} pending, ${s.journalEntries ?? 0} journal entries, ${s.focusMinutesTotal ?? 0} focus minutes total.
+Goal progress:
+${goalLines}`
+}
+
 // ─── SYSTEM PROMPT ─────────────────────────────────────────────────
 
-function buildSystemPrompt(state: AppState, sharedLists?: { id: string; name: string }[]): string {
+function buildSystemPrompt(state: AppState, sharedLists?: { id: string; name: string; memberCount?: number }[], coaching?: CoachingSnapshot | null): string {
   const pending = state.items.filter(i => i.status === 'pending')
   const done = state.items.filter(i => i.status === 'done')
   const overdue = pending.filter(i => getOverdueStatus(i).isOverdue)
@@ -124,6 +219,9 @@ TODAY: ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long'
 CURRENT TIME: ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} (user's local device time)
 TIMEZONE: ${Intl.DateTimeFormat().resolvedOptions().timeZone}
 ${locationContext}
+
+${buildSubscriptionContext(state)}
+${coaching ? buildCoachingContext(coaching) : ''}
 
 ═══ THEIR BOARD ═══
 PENDING (${pending.length}):
@@ -424,6 +522,7 @@ Present this warmly and end with something like: "I'd love to help you get the m
 - NEVER show JSON to the user. Your "message" field IS what they see.
 - NEVER say "I can't access your journal" — you CAN. It's in your context above.
 - NEVER say "I can't set reminders" — creating a board item with a due date IS a reminder.
+- When the user asks what plan/subscription they're on, answer ONLY from YOUR SUBSCRIPTION above — plan name, trial status and end date, and messages used today. Never list all four plans as if they were theirs, and never guess.
 
 ═══ SHARED LISTS ═══
 You CAN create shared lists for the user. When they ask to create a shared list, use create_shared_list immediately.
@@ -434,7 +533,7 @@ create_shared_list: {"type":"create_shared_list","payload":{"name":"List Name"}}
 - If they also asked to add items to the new list, you CAN add them in the same request once the list is created
 
 ${sharedLists && sharedLists.length > 0 ? `The user has these shared lists:
-${sharedLists.map(l => `- "${l.name}" (id: ${l.id})`).join('\n')}
+${sharedLists.map(l => `- "${l.name}" (id: ${l.id})${l.memberCount ? ` — ${l.memberCount} member${l.memberCount === 1 ? '' : 's'}` : ''}`).join('\n')}
 
 add_to_shared_list: {"type":"add_to_shared_list","payload":{"householdId":"...","text":"...","notes":"optional note","link":"optional URL"}}
 
@@ -625,8 +724,9 @@ export async function generateAIResponse(
   userMessage: string,
   state: AppState,
   chatHistory: { role: 'user' | 'assistant'; content: string }[],
-  sharedLists?: { id: string; name: string }[],
-  concise?: boolean
+  sharedLists?: { id: string; name: string; memberCount?: number }[],
+  concise?: boolean,
+  coaching?: CoachingSnapshot | null
 ): Promise<AIResponse> {
   const history = chatHistory.slice(-16).map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
   const lastMsg = history[history.length - 1]
@@ -649,7 +749,7 @@ export async function generateAIResponse(
   const appToken = Math.abs(hash).toString(36)
 
   try {
-    const sys = buildSystemPrompt(state, sharedLists) + (concise ? '\n\nKeep your reply concise: under 250 words, but still emit every action the user asked for.' : '')
+    const sys = buildSystemPrompt(state, sharedLists, coaching) + (concise ? '\n\nKeep your reply concise: under 250 words, but still emit every action the user asked for.' : '')
     const res = await fetch(`${apiBase()}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-App-Token': appToken },
@@ -834,6 +934,25 @@ function getFallbackResponse(userMessage: string, state: AppState): AIResponse {
 
   if (t.includes('dinner') || t.includes('meal plan') || t.includes('cook')) {
     return { message: `I'd love to plan your meals, ${name}! Quick questions:\n\n• Any dietary restrictions or allergies?\n• Favorite cuisines?\n• How much time to cook — 15, 30, or 45+ minutes?`, actions: [] }
+  }
+
+  // Plan questions must be answerable even when the API is down — the
+  // answer comes straight from local subscription state. Tight match on
+  // purpose: "plan my meals" / "meal plan" must NOT land here.
+  if (/\bsubscription\b|\btrial\b|\bmy plan\b|\bwhich plan\b|\bwhat plan\b|\bam i on\b|\bwhat tier\b|\bwhich tier\b/.test(t)) {
+    const sub = state.subscription || ({} as any)
+    const tier = sub.tier || 'free'
+    const info = PLAN_INFO[tier] || PLAN_INFO.free
+    const today = new Date().toDateString()
+    const usedToday = state.usageToday?.date === today ? state.usageToday.messages : 0
+    let status = ''
+    if (sub.isTrial && sub.trialEndsAt) {
+      const daysLeft = Math.ceil((new Date(sub.trialEndsAt).getTime() - Date.now()) / 86400000)
+      status = daysLeft > 0 ? ` You're on a 7-day free trial of ${info.name}, ending ${formatDateShort(sub.trialEndsAt)} (${daysLeft} day${daysLeft === 1 ? '' : 's'} left).` : ` Your free trial ended ${formatDateShort(sub.trialEndsAt)}.`
+    } else if (tier !== 'free') {
+      status = ` It's a paid plan${sub.activatedAt ? `, active since ${formatDateShort(sub.activatedAt)}` : ''}.`
+    }
+    return { message: `You're on ${info.name} (${info.price}).${status} You've used ${usedToday} of ${info.messagesPerDay} AI messages today.`, actions: [] }
   }
 
   if ((t.includes('bill') || t.includes('phone')) && (t.includes('remind') || t.includes('pay') || t.includes('due'))) {
