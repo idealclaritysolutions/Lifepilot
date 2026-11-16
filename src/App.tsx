@@ -13,6 +13,7 @@ import { usePushSubscribe } from '@/hooks/use-push-subscribe'
 import { useMorningBrief } from '@/hooks/use-morning-brief'
 import { useTaskDecay } from '@/hooks/use-task-decay'
 import { saveUserData, loadUserData } from '@/lib/supabase'
+import { syncRevenueCatIdentity, refreshEntitlements, onEntitlementsChanged, removeEntitlementsListener, type StoreTierInfo } from '@/lib/revenuecat'
 
 export interface LifeItem {
   id: string
@@ -68,6 +69,19 @@ export interface Subscription {
   promoCode?: string
   trialEndsAt?: string  // ISO date when 7-day trial ends
   isTrial?: boolean
+}
+
+/**
+ * Store-bought subscription, kept SEPARATE from `subscription` (build 14).
+ * `subscription` stays the home of the trial, promo codes, and the
+ * web/Stripe path; this field is only ever written by RevenueCat
+ * (purchase / restore / entitlement listener). RevenueCat is the source
+ * of truth — it is cleared when no entitlement is active.
+ */
+export interface StoreSubscription {
+  tier: SubscriptionTier
+  source: 'revenuecat'
+  expiresAt?: string  // from the entitlement, display only
 }
 
 export const TIER_LIMITS: Record<SubscriptionTier, {
@@ -217,6 +231,8 @@ export interface AppState {
   goals: Goal[]
   purchases: Purchase[]
   subscription: Subscription
+  /** Store-bought tier (RevenueCat, native only). See StoreSubscription. */
+  storeSubscription?: StoreSubscription | null
   usageToday: { messages: number; date: string }
   location?: UserLocation | null
   featureToggles: FeatureToggles
@@ -310,6 +326,40 @@ function subscriptionRank(sub: any): number {
   return 0
 }
 
+/**
+ * The tier the user actually has right now (build 14). Candidates:
+ * (a) `state.subscription` when it is a paid tier, or a trial whose
+ * trialEndsAt is still in the future; (b) `state.storeSubscription`
+ * when present (RevenueCat is the source of truth — presence means an
+ * active entitlement; the refresh/listener clears it when inactive).
+ * The higher-ranked candidate wins, so buying during a trial never
+ * downgrades: a pro purchase under a premium trial leaves the effective
+ * tier at premium until the trial ends, then it falls through to pro.
+ * Feature gates must read this, never `state.subscription.tier`.
+ */
+export function effectiveTier(state: AppState): SubscriptionTier {
+  const sub = state.subscription
+  const now = Date.now()
+  const subCandidate: SubscriptionTier | null =
+    sub.tier !== 'free' && (!sub.isTrial || (sub.trialEndsAt && new Date(sub.trialEndsAt).getTime() > now))
+      ? sub.tier
+      : null
+  const storeCandidate: SubscriptionTier | null = state.storeSubscription?.tier ?? null
+  if (subCandidate && storeCandidate) {
+    return subscriptionRank({ tier: subCandidate }) >= subscriptionRank({ tier: storeCandidate })
+      ? subCandidate
+      : storeCandidate
+  }
+  return subCandidate ?? storeCandidate ?? 'free'
+}
+
+/** Merge two store subscriptions: higher tier wins; never downgrade. */
+function pickStoreSubscription(localStore: any, cloudStore: any): any {
+  if (!localStore) return cloudStore ?? null
+  if (!cloudStore) return localStore
+  return subscriptionRank(localStore) >= subscriptionRank(cloudStore) ? localStore : cloudStore
+}
+
 // Pick the subscription that survives a sign-in. Higher tier wins; on a
 // tie an ACTIVE trial beats an EXPIRED trial, and a paid tier beats a
 // trial. A sign-in must never silently downgrade the user (the bug
@@ -341,13 +391,15 @@ function App() {
   const locationHook = useLocation()
   const { isLoaded: authLoaded, isSignedIn, user: authUser, userName, isRecovery } = useAuth()
 
-  // Check if trial has expired — downgrade to free
+  // Check if trial has expired — downgrade to free, but ONLY when
+  // there is no active store subscription: a buyer under an expired
+  // trial falls through to their store tier, never to free.
   useEffect(() => {
     const sub = state.subscription
     if (sub.isTrial && sub.trialEndsAt) {
       const now = new Date()
       const trialEnd = new Date(sub.trialEndsAt)
-      if (now > trialEnd) {
+      if (now > trialEnd && !state.storeSubscription?.tier) {
         setState(prev => ({
           ...prev,
           subscription: { tier: 'free', activatedAt: prev.subscription.activatedAt },
@@ -403,7 +455,16 @@ function App() {
   const hasLoadedCloudRef = useRef(false)
   useEffect(() => {
     if (!authLoaded) return
-    if (!isSignedIn || !authUser) { hasLoadedCloudRef.current = false; return }
+    if (!isSignedIn || !authUser) {
+      hasLoadedCloudRef.current = false
+      // Signed out — RevenueCat falls back to its anonymous id; any
+      // entitlements on that id still apply until sign-in identifies.
+      syncRevenueCatIdentity(null).then((info) => {
+        if (info) applyStoreSubscription(info.tier, info.expiresAt)
+        else clearStoreSubscription()
+      })
+      return
+    }
     if (hasLoadedCloudRef.current) return
     hasLoadedCloudRef.current = true
 
@@ -453,6 +514,7 @@ function App() {
               habits: dedupeHabits(unionById(cloudData.habits, localData.habits, preferLocal)),
               chatHistory: [...(cloudData.chatHistory || []), ...(localData.chatHistory || [])].slice(-100),
               subscription: pickSubscription(localData.subscription, cloudData.subscription),
+              storeSubscription: pickStoreSubscription(localData.storeSubscription, cloudData.storeSubscription),
             }
             setState(prev => ({ ...DEFAULT_STATE, ...merged }))
             await saveUserData(currentUserId, { ...merged, lastSyncedAt: new Date().toISOString() })
@@ -506,7 +568,15 @@ function App() {
         }
       }
     }
-    syncCloud()
+    // Identify RevenueCat with the Supabase account AFTER the cloud
+    // sync completes, so the first entitlement read sees the merged
+    // state. (Anonymous purchase is allowed — see lib/revenuecat.)
+    syncCloud().then(() => {
+      syncRevenueCatIdentity(authUser).then((info) => {
+        if (info) applyStoreSubscription(info.tier, info.expiresAt)
+        else clearStoreSubscription()
+      })
+    })
   }, [authLoaded, isSignedIn, authUser?.id])
   useDailyNudges(state)
   usePushSubscribe(!!state.profile.notificationsEnabled)
@@ -536,6 +606,7 @@ function App() {
               people: unionById(cloudData.people, localData?.people, false),
               chatHistory: [...(cloudData.chatHistory || []), ...(localData?.chatHistory || [])].slice(-100),
               subscription: pickSubscription(localData?.subscription, cloudData.subscription),
+              storeSubscription: pickStoreSubscription(localData?.storeSubscription, cloudData.storeSubscription),
             }))
           }
         }
@@ -842,6 +913,50 @@ function App() {
     setState(prev => ({ ...prev, subscription: sub }))
   }, [])
 
+  // ─── Store subscription (RevenueCat, build 14) ────────────────────
+  // Sets ONLY the store field; the existing save effect persists it to
+  // localStorage + Supabase automatically. Never touches the trial.
+  const applyStoreSubscription = useCallback((tier: SubscriptionTier, expiresAt?: string) => {
+    setState(prev => ({
+      ...prev,
+      storeSubscription: { tier, source: 'revenuecat' as const, expiresAt },
+    }))
+  }, [])
+
+  const clearStoreSubscription = useCallback(() => {
+    setState(prev => (prev.storeSubscription ? { ...prev, storeSubscription: null } : prev))
+  }, [])
+
+  // RevenueCat entitlement listener (native only): renewals,
+  // cancellations, expiry, refunds, and purchases on another device
+  // all flow through here. No-op on web.
+  useEffect(() => {
+    let listenerId: string | null = null
+    let cancelled = false
+    onEntitlementsChanged((info) => {
+      if (cancelled) return
+      if (info) applyStoreSubscription(info.tier, info.expiresAt)
+      else clearStoreSubscription()
+    }).then((id) => { listenerId = id })
+    return () => {
+      cancelled = true
+      removeEntitlementsListener(listenerId)
+    }
+  }, [applyStoreSubscription, clearStoreSubscription])
+
+  // Re-read entitlements when the app becomes visible (native only) —
+  // catches purchases/cancellations made outside the app.
+  useEffect(() => {
+    const handleVisibility = async () => {
+      if (document.visibilityState !== 'visible') return
+      const info = await refreshEntitlements()
+      if (info) applyStoreSubscription(info.tier, info.expiresAt)
+      else clearStoreSubscription()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [applyStoreSubscription, clearStoreSubscription])
+
   // Track daily message usage
   const incrementMessageCount = useCallback(() => {
     setState(prev => {
@@ -949,6 +1064,7 @@ function App() {
           addPurchase={addPurchase}
           applyPromoCode={applyPromoCode}
           setSubscription={setSubscription}
+          applyStoreSubscription={applyStoreSubscription}
           incrementMessageCount={incrementMessageCount}
           notifications={notifications}
           locationHook={locationHook}
