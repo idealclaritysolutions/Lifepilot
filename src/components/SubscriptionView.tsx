@@ -58,7 +58,7 @@ const TIERS = [
     id: 'premium' as SubscriptionTier,
     name: 'Inner Circle',
     price: '$34.99/mo',
-    annual: '$329.99/yr (save 22%)',
+    annual: '$329.99/yr (save 21%)',
     icon: '👑',
     color: 'border-purple-300 ring-2 ring-purple-100',
     features: ['100 AI messages/day', '20 AI web searches/day', 'Unlimited journal + voice', '50 people & events', '10 shared lists with family & friends', '15 habit tracks + streaks + insights', 'Monthly life report (PDF)', 'Journal export to PDF', 'Priority AI responses', 'Early access to features'],
