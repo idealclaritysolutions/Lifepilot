@@ -294,7 +294,7 @@ export function SubscriptionView({
           const nativeMonthlyPrice = isNative && nativeMonthlyId ? storePriceFor(nativeMonthlyId) : undefined
           const nativeAnnualPrice = isNative && nativeAnnualId ? storePriceFor(nativeAnnualId) : undefined
           const displayPrice = nativeMonthlyPrice ? `${nativeMonthlyPrice}/mo` : tier.price
-          const displayAnnual = nativeAnnualPrice ? `${nativeAnnualPrice}/yr (save 22%)` : tier.annual
+          const displayAnnual = nativeAnnualPrice ? `${nativeAnnualPrice}/yr (save 21%)` : tier.annual
           return (
             <div key={tier.id} className={`bg-white rounded-2xl border-2 p-5 shadow-sm relative ${isCurrent ? 'border-emerald-300 ring-2 ring-emerald-100' : tier.color}`}>
               {tier.popular && !isCurrent && (
