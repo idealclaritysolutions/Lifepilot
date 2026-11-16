@@ -1,12 +1,35 @@
 import { useState } from 'react'
 import { useAuth } from '@/lib/auth'
 import type { AppState, Subscription, SubscriptionTier, PROMO_CODES } from '@/App'
+import { effectiveTier } from '@/App'
+import { refreshEntitlements, type StoreProduct } from '@/lib/revenuecat'
 import { Check, Crown, Sparkles, Zap, Star, X } from 'lucide-react'
 
 interface Props {
   state: AppState
   applyPromoCode: (code: string) => boolean
   onClose: () => void
+  /** Forwarded from App (plan §3.4) — the native purchase handlers in
+   * MainApp own the RevenueCat calls; these are the paywall's props. */
+  setSubscription?: (sub: Subscription) => void
+  applyStoreSubscription?: (tier: SubscriptionTier, expiresAt?: string) => void
+  /** Native only: buy a store product. Resolves silently on cancel;
+   * throws on any other failure (caller shows one friendly line). */
+  onPurchaseProduct?: (productId: string) => Promise<void>
+  /** Native only: restore previous purchases. */
+  onRestorePurchases?: () => Promise<void>
+  /** Store products from RevenueCat (native only; [] until the Play
+   * products exist). */
+  storeProducts?: StoreProduct[]
+  storeLoading?: boolean
+  isNative?: boolean
+}
+
+// Native product mapping: tier + billing period -> store product id.
+const NATIVE_PRODUCTS: Record<string, { monthly: string; annual?: string }> = {
+  pro: { monthly: 'lifepilot_monthly', annual: 'lifepilot_yearly' },
+  premium: { monthly: 'innercircle_monthly', annual: 'innercircle_yearly' },
+  enterprise: { monthly: 'guided_monthly' },
 }
 
 const TIERS = [
@@ -35,7 +58,7 @@ const TIERS = [
     id: 'premium' as SubscriptionTier,
     name: 'Inner Circle',
     price: '$34.99/mo',
-    annual: '$327.51/yr (save 22%)',
+    annual: '$329.99/yr (save 22%)',
     icon: '👑',
     color: 'border-purple-300 ring-2 ring-purple-100',
     features: ['100 AI messages/day', '20 AI web searches/day', 'Unlimited journal + voice', '50 people & events', '10 shared lists with family & friends', '15 habit tracks + streaks + insights', 'Monthly life report (PDF)', 'Journal export to PDF', 'Priority AI responses', 'Early access to features'],
@@ -76,15 +99,70 @@ const STRIPE_LINKS: Record<string, { monthly: string; annual?: string }> = {
   },
 }
 
-export function SubscriptionView({ state, applyPromoCode, onClose }: Props) {
+export function SubscriptionView({
+  state,
+  applyPromoCode,
+  onClose,
+  setSubscription: _setSubscription,
+  applyStoreSubscription: _applyStoreSubscription,
+  onPurchaseProduct,
+  onRestorePurchases,
+  storeProducts = [],
+  storeLoading = false,
+  isNative = false,
+}: Props) {
   const [promoInput, setPromoInput] = useState('')
   const [promoResult, setPromoResult] = useState<'success' | 'error' | null>(null)
   const [promoMsg, setPromoMsg] = useState('')
   const { user } = useAuth()
 
-  const currentTier = state.subscription.tier
+  // Effective tier: the store tier counts, so a store purchase shows
+  // here immediately even while a trial is still running.
+  const currentTier = effectiveTier(state)
   const expiresAt = state.subscription.expiresAt ? new Date(state.subscription.expiresAt) : null
   const isExpired = expiresAt ? expiresAt < new Date() : false
+
+  // ─── Native purchase state ───────────────────────────────────────
+  const [purchasingId, setPurchasingId] = useState<string | null>(null)
+  const [purchaseError, setPurchaseError] = useState<string | null>(null)
+  const [restoring, setRestoring] = useState(false)
+  const [restoreMsg, setRestoreMsg] = useState<string | null>(null)
+
+  /** Store price string for a product id, e.g. "$329.99". Undefined
+   * until the Play products exist. */
+  const storePriceFor = (productId: string): string | undefined =>
+    storeProducts.find((p) => p.id === productId)?.priceString
+
+  const handleBuy = async (productId: string) => {
+    if (!onPurchaseProduct || purchasingId) return
+    setPurchasingId(productId)
+    setPurchaseError(null)
+    try {
+      await onPurchaseProduct(productId)
+      // Null return = user cancelled: silent, the paywall just stays open.
+    } catch {
+      setPurchaseError("Purchase couldn't be completed — please try again.")
+    } finally {
+      setPurchasingId(null)
+    }
+  }
+
+  const handleRestore = async () => {
+    if (!onRestorePurchases || restoring) return
+    setRestoring(true)
+    setRestoreMsg(null)
+    try {
+      await onRestorePurchases()
+      // Re-read entitlements for the definitive answer (the state prop
+      // in this closure is stale until the next render).
+      const info = await refreshEntitlements()
+      setRestoreMsg(info ? 'Purchases restored.' : 'No purchases found for this account.')
+    } catch {
+      setRestoreMsg("Restore couldn't be completed — please try again.")
+    } finally {
+      setRestoring(false)
+    }
+  }
 
   // Append user email to Stripe links for prefill
   const getStripeLink = (baseUrl: string) => {
@@ -187,9 +265,36 @@ export function SubscriptionView({ state, applyPromoCode, onClose }: Props) {
           )}
         </div>
 
+        {/* Native: restore + not-available-yet notice (web: nothing here) */}
+        {isNative && !storeLoading && storeProducts.length === 0 && (
+          <div className="bg-white rounded-2xl border border-stone-100 p-4 shadow-sm">
+            <p className="text-sm text-stone-600">Subscriptions will be available here once the store listing is live.</p>
+          </div>
+        )}
+        {isNative && (
+          <div className="bg-white rounded-2xl border border-stone-100 p-4 shadow-sm">
+            <button onClick={handleRestore} disabled={restoring}
+              className="w-full py-2.5 rounded-xl bg-stone-100 text-stone-700 text-sm font-medium hover:bg-stone-200 transition-colors disabled:opacity-60">
+              {restoring ? 'Restoring…' : 'Restore purchases'}
+            </button>
+            {restoreMsg && (
+              <p className="text-xs mt-2 font-medium text-center text-stone-500">{restoreMsg}</p>
+            )}
+          </div>
+        )}
+
         {/* Tier cards */}
         {TIERS.map(tier => {
           const isCurrent = tier.id === currentTier && !isExpired
+          // Native: prices come from the store, never the hardcoded
+          // literals (the premium annual literal matches the locked
+          // store price $329.99).
+          const nativeMonthlyId = NATIVE_PRODUCTS[tier.id]?.monthly
+          const nativeAnnualId = NATIVE_PRODUCTS[tier.id]?.annual
+          const nativeMonthlyPrice = isNative && nativeMonthlyId ? storePriceFor(nativeMonthlyId) : undefined
+          const nativeAnnualPrice = isNative && nativeAnnualId ? storePriceFor(nativeAnnualId) : undefined
+          const displayPrice = nativeMonthlyPrice ? `${nativeMonthlyPrice}/mo` : tier.price
+          const displayAnnual = nativeAnnualPrice ? `${nativeAnnualPrice}/yr (save 22%)` : tier.annual
           return (
             <div key={tier.id} className={`bg-white rounded-2xl border-2 p-5 shadow-sm relative ${isCurrent ? 'border-emerald-300 ring-2 ring-emerald-100' : tier.color}`}>
               {tier.popular && !isCurrent && (
@@ -202,8 +307,8 @@ export function SubscriptionView({ state, applyPromoCode, onClose }: Props) {
                 <span className="text-2xl">{tier.icon}</span>
                 <div>
                   <p className="font-bold text-stone-800">{tier.name}</p>
-                  <p className="text-sm text-amber-600 font-semibold">{tier.price}</p>
-                  {tier.annual && <p className="text-[10px] text-stone-400">{tier.annual}</p>}
+                  <p className="text-sm text-amber-600 font-semibold">{displayPrice}</p>
+                  {displayAnnual && <p className="text-[10px] text-stone-400">{displayAnnual}</p>}
                 </div>
               </div>
               <div className="space-y-1.5 mb-3">
@@ -225,20 +330,46 @@ export function SubscriptionView({ state, applyPromoCode, onClose }: Props) {
                 )}
               </div>
               {tier.id !== 'free' && !isCurrent && (
-                <div className="space-y-2">
-                  {STRIPE_LINKS[tier.id]?.monthly && (
-                    <a href={getStripeLink(STRIPE_LINKS[tier.id].monthly)} target="_blank" rel="noopener noreferrer"
-                      className="block w-full py-2.5 rounded-xl bg-stone-800 text-white text-sm font-medium hover:bg-stone-700 transition-colors text-center">
-                      {tier.id === 'enterprise' ? 'Subscribe — $129.99/mo' : `Subscribe — ${tier.price}`}
-                    </a>
-                  )}
-                  {STRIPE_LINKS[tier.id]?.annual && (
-                    <a href={getStripeLink(STRIPE_LINKS[tier.id].annual!)} target="_blank" rel="noopener noreferrer"
-                      className="block w-full py-2.5 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 text-sm font-medium hover:bg-amber-100 transition-colors text-center">
-                      Save with annual — {tier.annual?.split(' ')[0]}
-                    </a>
-                  )}
-                </div>
+                isNative ? (
+                  <div className="space-y-2">
+                    {storeLoading ? (
+                      <p className="text-xs text-stone-400 text-center py-2">Loading prices…</p>
+                    ) : (
+                      <>
+                        {nativeMonthlyId && nativeMonthlyPrice && (
+                          <button onClick={() => handleBuy(nativeMonthlyId)} disabled={!!purchasingId}
+                            className="block w-full py-2.5 rounded-xl bg-stone-800 text-white text-sm font-medium hover:bg-stone-700 transition-colors text-center disabled:opacity-60">
+                            {purchasingId === nativeMonthlyId ? 'Processing…' : `Subscribe — ${nativeMonthlyPrice}/mo`}
+                          </button>
+                        )}
+                        {nativeAnnualId && nativeAnnualPrice && (
+                          <button onClick={() => handleBuy(nativeAnnualId)} disabled={!!purchasingId}
+                            className="block w-full py-2.5 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 text-sm font-medium hover:bg-amber-100 transition-colors text-center disabled:opacity-60">
+                            {purchasingId === nativeAnnualId ? 'Processing…' : `Save with annual — ${nativeAnnualPrice}`}
+                          </button>
+                        )}
+                      </>
+                    )}
+                    {purchaseError && (
+                      <p className="text-xs text-red-500 font-medium text-center">{purchaseError}</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {STRIPE_LINKS[tier.id]?.monthly && (
+                      <a href={getStripeLink(STRIPE_LINKS[tier.id].monthly)} target="_blank" rel="noopener noreferrer"
+                        className="block w-full py-2.5 rounded-xl bg-stone-800 text-white text-sm font-medium hover:bg-stone-700 transition-colors text-center">
+                        {tier.id === 'enterprise' ? 'Subscribe — $129.99/mo' : `Subscribe — ${tier.price}`}
+                      </a>
+                    )}
+                    {STRIPE_LINKS[tier.id]?.annual && (
+                      <a href={getStripeLink(STRIPE_LINKS[tier.id].annual!)} target="_blank" rel="noopener noreferrer"
+                        className="block w-full py-2.5 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 text-sm font-medium hover:bg-amber-100 transition-colors text-center">
+                        Save with annual — {tier.annual?.split(' ')[0]}
+                      </a>
+                    )}
+                  </div>
+                )
               )}
             </div>
           )
