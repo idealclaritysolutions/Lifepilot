@@ -103,9 +103,8 @@ export async function initRevenueCat(appUserId?: string | null): Promise<void> {
       const { isConfigured } = await Purchases.isConfigured()
       if (isConfigured) { configured = true; return }
     } catch { /* fall through to configure */ }
-    // DEBUG while sandbox-testing build 14 on internal testing; drop to
-    // WARN before the production release.
-    await Purchases.setLogLevel({ level: LOG_LEVEL.DEBUG })
+    // WARN for production (was DEBUG while sandbox-testing build 14).
+    await Purchases.setLogLevel({ level: LOG_LEVEL.WARN })
     await Purchases.configure({
       apiKey: REVENUECAT_API_KEY,
       appUserID: appUserId ?? undefined,
