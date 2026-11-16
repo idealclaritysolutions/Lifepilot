@@ -75,7 +75,7 @@ const PLANS = [
   {
     name: 'Inner Circle',
     price: '$34.99/mo',
-    note: 'or $329.99/yr (save 22%)',
+    note: 'or $329.99/yr (save 21%)',
     points: ['100 AI messages/day', 'Unlimited journal + voice', 'Shared Lists & habit tracking'],
   },
   {
