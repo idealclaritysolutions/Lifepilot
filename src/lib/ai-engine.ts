@@ -109,8 +109,42 @@ function formatDateShort(iso?: string | null): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function buildSubscriptionContext(state: AppState): string {
+function tierRank(tier?: string): number {
+  if (tier === 'enterprise') return 3
+  if (tier === 'premium') return 2
+  if (tier === 'pro') return 1
+  return 0
+}
+
+// Mirror of App.tsx effectiveTier() — ai-engine cannot import runtime
+// values from App (circular import), so the ranking is duplicated here
+// exactly, the same way PLAN_INFO mirrors the store prices. Returns the
+// subscription the prompt should PRESENT: the local one, unless the
+// store-bought (RevenueCat) tier strictly outranks the local candidate
+// (an active trial or paid tier), in which case a store-shaped
+// subscription is returned and fromStore is true. Ties go to the local
+// subscription, matching effectiveTier. With no storeSubscription the
+// local subscription is returned untouched.
+function effectiveSubscription(state: AppState): { sub: AppState['subscription']; fromStore: boolean } {
   const sub = state.subscription || ({} as AppState['subscription'])
+  const now = Date.now()
+  const localTier = sub.tier || 'free'
+  const localCandidate =
+    localTier !== 'free' && (!sub.isTrial || (sub.trialEndsAt && new Date(sub.trialEndsAt).getTime() > now))
+      ? localTier
+      : null
+  const storeTier = state.storeSubscription?.tier ?? null
+  if (storeTier && tierRank(storeTier) > tierRank(localCandidate ?? 'free')) {
+    return {
+      sub: { tier: storeTier, activatedAt: '', expiresAt: state.storeSubscription?.expiresAt },
+      fromStore: true,
+    }
+  }
+  return { sub, fromStore: false }
+}
+
+function buildSubscriptionContext(state: AppState): string {
+  const { sub, fromStore } = effectiveSubscription(state)
   const tier = sub.tier || 'free'
   const info = PLAN_INFO[tier] || PLAN_INFO.free
   const today = new Date().toDateString()
@@ -127,6 +161,8 @@ function buildSubscriptionContext(state: AppState): string {
       : `Free trial ended ${formatDateShort(sub.trialEndsAt)} — now on the free plan`
   } else if (tier === 'free') {
     status = 'Free plan'
+  } else if (fromStore) {
+    status = `Paid plan (bought in the app via Google Play)${sub.expiresAt ? `, renews ${formatDateShort(sub.expiresAt)}` : ''}`
   } else {
     status = `Paid plan${sub.activatedAt ? `, active since ${formatDateShort(sub.activatedAt)}` : ''}${sub.expiresAt ? `, renews ${formatDateShort(sub.expiresAt)}` : ''}`
   }
@@ -701,7 +737,7 @@ Examples:
 - "Remind me about the call Tuesday 3pm, here's the link: https://zoom.us/j/123" → google_create_event with the Zoom URL in the description + add_item task with the link in notes
 
 GUIDED PLAN COACHING INTELLIGENCE (only for enterprise/Guided tier users):
-${state.subscription.tier === 'enterprise' ? `This user is on the GUIDED plan — they have a personal coach. Your role is ELEVATED:
+${effectiveSubscription(state).sub.tier === 'enterprise' ? `This user is on the GUIDED plan — they have a personal coach. Your role is ELEVATED:
 - Act as their AI coaching assistant between human coaching calls
 - Be more proactive about goal-tracking, accountability, and progress review
 - Every Monday morning, provide a "Weekly Strategy Session" — review their week ahead, suggest priorities, check habit consistency, and ask about their goals
@@ -954,7 +990,7 @@ function getFallbackResponse(userMessage: string, state: AppState): AIResponse {
   // answer comes straight from local subscription state. Tight match on
   // purpose: "plan my meals" / "meal plan" must NOT land here.
   if (/\bsubscription\b|\btrial\b|\bmy plan\b|\bwhich plan\b|\bwhat plan\b|\bam i on\b|\bwhat tier\b|\bwhich tier\b/.test(t)) {
-    const sub = state.subscription || ({} as any)
+    const { sub, fromStore } = effectiveSubscription(state)
     const tier = sub.tier || 'free'
     const info = PLAN_INFO[tier] || PLAN_INFO.free
     const today = new Date().toDateString()
@@ -964,7 +1000,9 @@ function getFallbackResponse(userMessage: string, state: AppState): AIResponse {
       const daysLeft = Math.ceil((new Date(sub.trialEndsAt).getTime() - Date.now()) / 86400000)
       status = daysLeft > 0 ? ` You're on a 7-day free trial of ${info.name}, ending ${formatDateShort(sub.trialEndsAt)} (${daysLeft} day${daysLeft === 1 ? '' : 's'} left).` : ` Your free trial ended ${formatDateShort(sub.trialEndsAt)}.`
     } else if (tier !== 'free') {
-      status = ` It's a paid plan${sub.activatedAt ? `, active since ${formatDateShort(sub.activatedAt)}` : ''}.`
+      status = fromStore
+        ? ` It's a paid plan (bought in the app via Google Play).`
+        : ` It's a paid plan${sub.activatedAt ? `, active since ${formatDateShort(sub.activatedAt)}` : ''}.`
     }
     return { message: `You're on ${info.name} (${info.price}).${status} You've used ${usedToday} of ${info.messagesPerDay} AI messages today.`, actions: [] }
   }
